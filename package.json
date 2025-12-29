@@ -1,0 +1,14 @@
+{
+  "name": "fb-cookie-bot-node",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.6.2",
+    "cheerio": "^1.0.0-rc.12",
+    "multer": "^1.4.5-lts.1"
+  },
+  "scripts": {
+    "start": "node index.js"
+  }
+}
