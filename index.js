@@ -476,33 +476,65 @@ const htmlControlPanel = `
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>FAIZU MESSAGING SYSTEM</title>
+<title>Multi-User Terror System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --color-lavender: #e6e6ff;
+    --color-lavender-light: #f0f0ff;
+    --color-lavender-dark: #d1d1f0;
+    --color-pastel-pink: #ffd6e7;
+    --color-pastel-pink-dark: #f2c2d8;
+    --color-sky-blue: #d6f0ff;
+    --color-sky-blue-dark: #c2e0f2;
+    --color-cream: #fffaf0;
+    --color-cream-dark: #f5f0e6;
+    --color-text: #4a4a6a;
+    --color-text-light: #8a8aaa;
+    --color-success: #8ce99a;
+    --color-warning: #ffd8a8;
+    --color-error: #ffaba8;
+    --shadow-soft: 0 8px 32px rgba(138, 138, 170, 0.08);
+    --shadow-medium: 0 12px 40px rgba(138, 138, 170, 0.12);
+    --radius-large: 20px;
+    --radius-medium: 16px;
+    --radius-small: 12px;
+    --transition-slow: 0.6s ease;
+    --transition-medium: 0.3s ease;
+    --transition-fast: 0.15s ease;
+  }
+  
   * {
     box-sizing: border-box;
-    font-family: 'Segoe UI', 'Poppins', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
   }
   
   html, body {
     height: 100%;
-    margin: 0;
-    background: #0f0b0f;
-    color: #f0e0f0;
+    font-family: 'Manrope', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(135deg, #f8f7ff 0%, #f0eeff 50%, #e8e6ff 100%);
+    color: var(--color-text);
+    font-weight: 400;
+    line-height: 1.6;
     overflow-x: hidden;
   }
   
   body {
-    background: 
-      radial-gradient(ellipse at 20% 20%, rgba(255, 20, 100, 0.15) 0%, transparent 40%),
-      radial-gradient(ellipse at 80% 80%, rgba(220, 20, 60, 0.1) 0%, transparent 40%),
-      radial-gradient(ellipse at 40% 60%, rgba(180, 0, 40, 0.08) 0%, transparent 40%),
-      linear-gradient(135deg, #0f0b0f 0%, #1a0f1a 50%, #2d1525 100%);
     position: relative;
-    min-height: 100vh;
+    overflow-y: auto;
+    animation: fadeIn 1.2s ease-out;
   }
   
-  /* Animated Red Lines Background */
-  .lines-container {
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  /* Background elements */
+  .background-elements {
     position: fixed;
     top: 0;
     left: 0;
@@ -510,688 +542,416 @@ const htmlControlPanel = `
     height: 100%;
     z-index: -1;
     pointer-events: none;
-    opacity: 0.6;
+    overflow: hidden;
   }
   
-  .line {
+  .floating-bubble {
     position: absolute;
-    background: linear-gradient(90deg, transparent, rgba(255, 20, 100, 0.4), transparent);
-    width: 2px;
-    height: 100%;
-    animation: lineMove 15s infinite linear;
-  }
-  
-  .line:nth-child(1) { left: 10%; animation-delay: 0s; height: 80%; top: 10%; }
-  .line:nth-child(2) { left: 25%; animation-delay: -3s; height: 90%; top: 5%; }
-  .line:nth-child(3) { left: 40%; animation-delay: -6s; height: 70%; top: 15%; }
-  .line:nth-child(4) { left: 60%; animation-delay: -9s; height: 85%; top: 7%; }
-  .line:nth-child(5) { left: 80%; animation-delay: -12s; height: 75%; top: 12%; }
-  
-  @keyframes lineMove {
-    0% { transform: translateY(-100%); opacity: 0; }
-    10% { opacity: 0.8; }
-    90% { opacity: 0.8; }
-    100% { transform: translateY(100vh); opacity: 0; }
-  }
-  
-  /* Pulsing Glow Effect */
-  .pulse-glow {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 80vw;
-    height: 80vh;
-    background: radial-gradient(ellipse, rgba(255, 20, 100, 0.1) 0%, transparent 70%);
-    z-index: -2;
-    pointer-events: none;
-    animation: pulseGlow 4s ease-in-out infinite alternate;
-  }
-  
-  @keyframes pulseGlow {
-    0% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
-    100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1.1); }
-  }
-  
-  /* Floating Particles */
-  .particles {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    pointer-events: none;
-  }
-  
-  .particle {
-    position: absolute;
-    width: 3px;
-    height: 3px;
-    background-color: rgba(255, 50, 120, 0.7);
     border-radius: 50%;
-    animation: floatParticle 20s infinite linear;
+    background: linear-gradient(135deg, rgba(230, 230, 255, 0.4), rgba(255, 214, 231, 0.3));
+    filter: blur(20px);
+    animation: float 25s infinite ease-in-out;
   }
   
-  @keyframes floatParticle {
-    0% {
-      transform: translateY(100vh) translateX(0) rotate(0deg);
-      opacity: 0;
-    }
-    10% {
-      opacity: 1;
-    }
-    90% {
-      opacity: 1;
-    }
-    100% {
-      transform: translateY(-100px) translateX(100px) rotate(360deg);
-      opacity: 0;
-    }
+  .floating-bubble:nth-child(1) {
+    width: 200px;
+    height: 200px;
+    top: 10%;
+    left: 5%;
+    animation-delay: 0s;
   }
   
-  /* Header with Neon Effect */
+  .floating-bubble:nth-child(2) {
+    width: 150px;
+    height: 150px;
+    top: 60%;
+    right: 8%;
+    animation-delay: 5s;
+  }
+  
+  .floating-bubble:nth-child(3) {
+    width: 180px;
+    height: 180px;
+    bottom: 15%;
+    left: 15%;
+    animation-delay: 10s;
+  }
+  
+  .floating-bubble:nth-child(4) {
+    width: 120px;
+    height: 120px;
+    top: 20%;
+    right: 15%;
+    animation-delay: 15s;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    33% { transform: translateY(-20px) rotate(5deg); }
+    66% { transform: translateY(10px) rotate(-5deg); }
+  }
+  
+  /* Header */
   header {
-    padding: 20px 30px;
+    padding: 28px 32px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: rgba(25, 10, 20, 0.95);
-    border-bottom: 2px solid rgba(255, 20, 100, 0.5);
-    box-shadow: 
-      0 10px 30px rgba(0, 0, 0, 0.7),
-      0 0 30px rgba(255, 20, 100, 0.2);
-    backdrop-filter: blur(10px);
-    position: relative;
-    overflow: hidden;
-    z-index: 10;
-  }
-  
-  header::before {
-    content: '';
-    position: absolute;
+    background: rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(230, 230, 255, 0.8);
+    position: sticky;
     top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, 
-      transparent, 
-      rgba(255, 20, 100, 1), 
-      rgba(255, 50, 150, 1),
-      rgba(255, 20, 100, 1),
-      transparent);
-    animation: headerScan 3s linear infinite;
+    z-index: 100;
+    animation: slideDown 0.8s ease-out;
   }
   
-  @keyframes headerScan {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-  }
-  
-  .logo-container {
-    display: flex;
-    align-items: center;
-    gap: 15px;
+  @keyframes slideDown {
+    from { transform: translateY(-20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
   }
   
   .logo {
-    width: 60px;
-    height: 60px;
-    background: linear-gradient(135deg, #ff1464, #dc143c);
-    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  
+  .logo-icon {
+    width: 48px;
+    height: 48px;
+    background: linear-gradient(135deg, var(--color-lavender), var(--color-pastel-pink));
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 28px;
-    font-weight: 900;
     color: white;
-    box-shadow: 
-      0 0 20px rgba(255, 20, 100, 0.8),
-      inset 0 0 20px rgba(255, 255, 255, 0.2);
-    position: relative;
-    overflow: hidden;
-    animation: logoGlow 2s ease-in-out infinite alternate;
-  }
-  
-  @keyframes logoGlow {
-    0% { box-shadow: 0 0 20px rgba(255, 20, 100, 0.8), inset 0 0 20px rgba(255, 255, 255, 0.2); }
-    100% { box-shadow: 0 0 30px rgba(255, 50, 150, 1), inset 0 0 30px rgba(255, 255, 255, 0.3); }
-  }
-  
-  .logo::after {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-    transform: rotate(45deg);
-    animation: logoShine 3s linear infinite;
-  }
-  
-  @keyframes logoShine {
-    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
-    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
-  }
-  
-  .logo-text {
-    display: flex;
-    flex-direction: column;
+    font-size: 24px;
+    box-shadow: var(--shadow-soft);
   }
   
   .logo-text h1 {
-    margin: 0;
-    font-size: 28px;
-    background: linear-gradient(90deg, #ff1464, #ff4d8d, #ff1464);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    font-weight: 900;
-    letter-spacing: 1px;
-    text-shadow: 0 0 15px rgba(255, 20, 100, 0.5);
-    animation: textShimmer 3s linear infinite;
-  }
-  
-  @keyframes textShimmer {
-    0% { background-position: -200px 0; }
-    100% { background-position: 200px 0; }
-  }
-  
-  .logo-text .subtitle {
-    font-size: 12px;
-    color: #ff80b3;
-    letter-spacing: 3px;
-    margin-top: 3px;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
-    text-shadow: 0 0 10px rgba(255, 20, 100, 0.5);
+    font-size: 24px;
+    color: var(--color-text);
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
   }
   
-  .level-indicator {
+  .logo-text p {
+    font-size: 14px;
+    color: var(--color-text-light);
+    font-weight: 400;
+  }
+  
+  .header-info {
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 24px;
   }
   
-  .level {
+  .system-status {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 5px;
+    gap: 8px;
+    padding: 10px 18px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: 100px;
+    border: 1px solid rgba(230, 230, 255, 0.8);
+    font-size: 14px;
+    color: var(--color-text);
+    font-weight: 500;
   }
   
-  .level-label {
-    font-size: 11px;
-    color: #ff80b3;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+  .status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: var(--color-success);
+    animation: pulse 2s infinite ease-in-out;
   }
   
-  .level-bar {
-    width: 120px;
-    height: 8px;
-    background: rgba(50, 10, 30, 0.8);
-    border-radius: 4px;
-    overflow: hidden;
-    position: relative;
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
   }
   
-  .level-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #ff1464, #ff4d8d);
-    border-radius: 4px;
-    width: 85%;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .level-fill::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-    animation: levelShine 2s linear infinite;
-  }
-  
-  @keyframes levelShine {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-  }
-  
-  .level-value {
-    font-size: 12px;
-    font-weight: bold;
-    color: #ff4d8d;
-    text-shadow: 0 0 5px rgba(255, 20, 100, 0.8);
-  }
-  
+  /* Main container */
   .container {
-    max-width: 1300px;
-    margin: 30px auto;
-    padding: 0 25px;
-  }
-  
-  /* Dashboard Grid */
-  .dashboard-grid {
+    max-width: 1200px;
+    margin: 32px auto;
+    padding: 0 32px;
     display: grid;
-    grid-template-columns: 2.5fr 1.5fr;
-    gap: 30px;
-    margin-bottom: 30px;
+    grid-template-columns: 1fr;
+    gap: 28px;
   }
   
-  @media (max-width: 1100px) {
-    .dashboard-grid {
-      grid-template-columns: 1fr;
-    }
+  /* Cards */
+  .card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    border-radius: var(--radius-large);
+    padding: 32px;
+    border: 1px solid rgba(230, 230, 255, 0.6);
+    box-shadow: var(--shadow-soft);
+    transition: all var(--transition-medium);
   }
   
-  /* Main Panel with Neon Border */
-  .panel {
-    background: rgba(30, 15, 25, 0.85);
-    border: 1px solid rgba(255, 20, 100, 0.3);
-    padding: 30px;
-    border-radius: 20px;
-    margin-bottom: 30px;
-    box-shadow: 
-      0 10px 40px rgba(0, 0, 0, 0.5),
-      inset 0 0 20px rgba(255, 20, 100, 0.05);
-    backdrop-filter: blur(10px);
-    position: relative;
-    overflow: hidden;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  .card:hover {
+    box-shadow: var(--shadow-medium);
+    transform: translateY(-4px);
   }
   
-  .panel::before {
-    content: '';
-    position: absolute;
-    top: -2px;
-    left: -2px;
-    right: -2px;
-    bottom: -2px;
-    background: linear-gradient(45deg, #ff1464, #dc143c, #ff1464, #ff4d8d, #ff1464);
-    border-radius: 22px;
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 0.5s ease;
+  .card-header {
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
   }
   
-  .panel:hover::before {
-    opacity: 1;
-    animation: borderGlow 2s linear infinite;
-  }
-  
-  @keyframes borderGlow {
-    0% { filter: hue-rotate(0deg); }
-    100% { filter: hue-rotate(360deg); }
-  }
-  
-  .panel-title {
+  .card-title {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
     font-size: 20px;
-    color: #ff4d8d;
-    margin-top: 0;
-    margin-bottom: 25px;
-    padding-bottom: 12px;
-    border-bottom: 2px solid rgba(255, 20, 100, 0.3);
+    color: var(--color-text);
     display: flex;
     align-items: center;
     gap: 12px;
-    text-shadow: 0 0 10px rgba(255, 20, 100, 0.3);
   }
   
-  .panel-title i {
-    font-size: 22px;
-    animation: iconPulse 2s infinite alternate;
+  .card-title-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--color-lavender), var(--color-sky-blue));
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
   }
   
-  @keyframes iconPulse {
-    0% { transform: scale(1); }
-    100% { transform: scale(1.1); }
-  }
-  
-  /* Form Elements */
-  .form-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 25px;
-  }
-  
-  .full-width {
-    grid-column: 1 / -1;
-  }
-  
+  /* Form elements */
   .form-group {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
   }
   
   label {
     display: block;
     font-size: 14px;
-    color: #ff99c2;
-    margin-bottom: 10px;
-    font-weight: 600;
-    text-shadow: 0 0 5px rgba(255, 20, 100, 0.3);
+    font-weight: 500;
+    color: var(--color-text);
+    margin-bottom: 8px;
   }
   
-  input, textarea, select, .file-input {
+  .form-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  
+  input[type="text"], 
+  input[type="number"], 
+  textarea, 
+  select,
+  .file-input-wrapper {
     width: 100%;
-    padding: 16px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 20, 100, 0.4);
-    background: rgba(40, 20, 30, 0.8);
-    color: #ffd6e6;
+    padding: 16px 20px;
+    border-radius: var(--radius-medium);
+    border: 1px solid rgba(230, 230, 255, 0.8);
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--color-text);
+    font-family: 'Manrope', sans-serif;
     font-size: 15px;
-    transition: all 0.3s ease;
+    transition: all var(--transition-medium);
     outline: none;
   }
   
-  input:focus, textarea:focus, select:focus {
-    border-color: #ff1464;
-    box-shadow: 0 0 0 3px rgba(255, 20, 100, 0.2), 0 0 20px rgba(255, 20, 100, 0.3);
-    background: rgba(50, 25, 35, 0.9);
-    transform: translateY(-2px);
+  input:focus, 
+  textarea:focus, 
+  select:focus {
+    border-color: var(--color-lavender-dark);
+    box-shadow: 0 0 0 3px rgba(230, 230, 255, 0.3);
+    background: white;
   }
   
-  .file-input {
+  .file-input-wrapper {
     display: flex;
     align-items: center;
     justify-content: space-between;
     cursor: pointer;
-    transition: all 0.3s ease;
   }
   
-  .file-input:hover {
-    border-color: #ff4d8d;
-    background: rgba(50, 25, 35, 0.9);
+  .file-input-wrapper span {
+    color: var(--color-text-light);
+    font-size: 14px;
+  }
+  
+  .file-input-wrapper:hover {
+    background: white;
+    border-color: var(--color-lavender);
   }
   
   input[type="file"] {
     display: none;
   }
   
-  .cookie-options {
+  .hint {
+    font-size: 13px;
+    color: var(--color-text-light);
+    margin-top: 6px;
+    display: block;
+  }
+  
+  /* Radio options */
+  .radio-group {
     display: flex;
     gap: 20px;
-    margin-bottom: 25px;
+    margin-bottom: 20px;
   }
   
-  .cookie-option {
-    flex: 1;
+  .radio-option {
     display: flex;
     align-items: center;
-    gap: 15px;
-    padding: 18px;
-    border-radius: 12px;
-    background: rgba(40, 20, 30, 0.6);
-    border: 1px solid rgba(255, 20, 100, 0.3);
+    gap: 10px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
   }
   
-  .cookie-option::before {
+  .radio-option input[type="radio"] {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--color-lavender);
+    background: white;
+    position: relative;
+    cursor: pointer;
+    transition: all var(--transition-medium);
+  }
+  
+  .radio-option input[type="radio"]:checked {
+    border-color: var(--color-sky-blue-dark);
+    background: var(--color-sky-blue);
+  }
+  
+  .radio-option input[type="radio"]:checked::after {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 20, 100, 0.1), transparent);
-    transform: translateX(-100%);
-    transition: transform 0.5s ease;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-sky-blue-dark);
   }
   
-  .cookie-option:hover::before {
-    transform: translateX(100%);
-  }
-  
-  .cookie-option:hover {
-    background: rgba(50, 25, 35, 0.8);
-    border-color: #ff4d8d;
-    transform: translateY(-3px);
-  }
-  
-  .cookie-option.active {
-    background: rgba(255, 20, 100, 0.1);
-    border-color: #ff1464;
-    box-shadow: 0 0 20px rgba(255, 20, 100, 0.2);
-  }
-  
-  .cookie-option input[type="radio"] {
-    width: auto;
-    accent-color: #ff1464;
+  .radio-option label {
+    margin-bottom: 0;
+    cursor: pointer;
+    font-weight: 500;
   }
   
   /* Buttons */
-  .action-buttons {
+  .buttons-row {
     display: flex;
-    gap: 20px;
-    margin-top: 30px;
-    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(230, 230, 255, 0.6);
   }
   
   .btn {
     padding: 16px 32px;
-    border-radius: 12px;
+    border-radius: var(--radius-medium);
     border: none;
-    font-size: 16px;
-    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    font-size: 15px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all var(--transition-medium);
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    min-width: 160px;
-    position: relative;
-    overflow: hidden;
-    z-index: 1;
-  }
-  
-  .btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transform: translateX(-100%);
-    transition: transform 0.6s ease;
-    z-index: -1;
-  }
-  
-  .btn:hover::before {
-    transform: translateX(100%);
+    gap: 10px;
   }
   
   .btn-primary {
-    background: linear-gradient(135deg, #ff1464, #dc143c);
+    background: linear-gradient(135deg, var(--color-lavender), var(--color-sky-blue));
     color: white;
-    box-shadow: 
-      0 8px 25px rgba(255, 20, 100, 0.4),
-      0 0 15px rgba(255, 20, 100, 0.2);
+    box-shadow: 0 4px 16px rgba(138, 138, 170, 0.15);
   }
   
   .btn-primary:hover {
-    transform: translateY(-5px);
-    box-shadow: 
-      0 12px 30px rgba(255, 20, 100, 0.6),
-      0 0 20px rgba(255, 20, 100, 0.4);
-    background: linear-gradient(135deg, #ff2a74, #ec2a54);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(138, 138, 170, 0.2);
   }
   
   .btn-secondary {
-    background: linear-gradient(135deg, #dc143c, #a01030);
-    color: white;
-    box-shadow: 0 8px 25px rgba(220, 20, 60, 0.4);
+    background: white;
+    color: var(--color-text);
+    border: 1px solid rgba(230, 230, 255, 0.8);
   }
   
   .btn-secondary:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 30px rgba(220, 20, 60, 0.6);
-    background: linear-gradient(135deg, #ec2a54, #b02040);
-  }
-  
-  .btn-warning {
-    background: linear-gradient(135deg, #ff4d8d, #ff1464);
-    color: white;
-    box-shadow: 0 8px 25px rgba(255, 77, 141, 0.4);
-  }
-  
-  .btn-warning:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 30px rgba(255, 77, 141, 0.6);
-    background: linear-gradient(135deg, #ff5d9d, #ff2a74);
+    background: rgba(255, 255, 255, 0.9);
+    border-color: var(--color-lavender);
   }
   
   .btn:disabled {
-    opacity: 0.5;
+    opacity: 0.6;
     cursor: not-allowed;
     transform: none !important;
-    box-shadow: none !important;
   }
   
-  /* Stats Panel */
-  .stats-panel {
-    background: rgba(25, 10, 20, 0.9);
-    border: 1px solid rgba(220, 20, 60, 0.3);
-    padding: 30px;
-    border-radius: 20px;
-    box-shadow: 
-      0 10px 40px rgba(0, 0, 0, 0.5),
-      inset 0 0 20px rgba(220, 20, 60, 0.05);
-    backdrop-filter: blur(10px);
-    height: fit-content;
+  .status-indicator-text {
+    font-size: 14px;
+    color: var(--color-text-light);
+    font-weight: 500;
+  }
+  
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid rgba(230, 230, 255, 0.6);
+  }
+  
+  .tab {
+    padding: 16px 28px;
+    background: transparent;
+    border: none;
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    color: var(--color-text-light);
+    cursor: pointer;
+    border-radius: var(--radius-medium) var(--radius-medium) 0 0;
+    transition: all var(--transition-medium);
     position: relative;
-    overflow: hidden;
+    font-size: 15px;
   }
   
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
+  .tab.active {
+    color: var(--color-text);
+    background: rgba(255, 255, 255, 0.9);
   }
   
-  .stat-card {
-    background: rgba(40, 20, 30, 0.7);
-    padding: 22px;
-    border-radius: 15px;
-    text-align: center;
-    border: 1px solid rgba(255, 20, 100, 0.2);
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .stat-card::before {
+  .tab.active::after {
     content: '';
     position: absolute;
-    top: 0;
+    bottom: -1px;
     left: 0;
     width: 100%;
-    height: 4px;
-    background: linear-gradient(90deg, #ff1464, #ff4d8d);
-    transform: scaleX(0);
-    transition: transform 0.5s ease;
+    height: 2px;
+    background: linear-gradient(90deg, var(--color-lavender), var(--color-sky-blue));
   }
   
-  .stat-card:hover::before {
-    transform: scaleX(1);
-  }
-  
-  .stat-card:hover {
-    transform: translateY(-8px);
-    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
-  }
-  
-  .stat-value {
-    font-size: 32px;
-    font-weight: 900;
-    margin-bottom: 8px;
-    text-shadow: 0 0 10px currentColor;
-  }
-  
-  .stat-card:nth-child(1) .stat-value { color: #ff1464; }
-  .stat-card:nth-child(2) .stat-value { color: #ff4d8d; }
-  .stat-card:nth-child(3) .stat-value { color: #ff80b3; }
-  .stat-card:nth-child(4) .stat-value { color: #dc143c; }
-  
-  .stat-label {
-    font-size: 13px;
-    color: #ff99c2;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-  }
-  
-  /* Console Panel */
-  .console-panel {
-    background: rgba(20, 8, 15, 0.95);
-    border: 1px solid rgba(255, 77, 141, 0.3);
-    border-radius: 20px;
-    overflow: hidden;
-    box-shadow: 
-      0 10px 40px rgba(0, 0, 0, 0.6),
-      0 0 20px rgba(255, 20, 100, 0.1);
-  }
-  
-  .console-tabs {
-    display: flex;
-    background: rgba(30, 15, 25, 0.95);
-    border-bottom: 1px solid rgba(255, 20, 100, 0.3);
-  }
-  
-  .console-tab {
-    padding: 20px 30px;
-    cursor: pointer;
-    font-weight: 700;
-    color: #ff80b3;
-    transition: all 0.3s ease;
-    border-bottom: 3px solid transparent;
-    position: relative;
-    flex: 1;
-    text-align: center;
-  }
-  
-  .console-tab::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    width: 0;
-    height: 3px;
-    background: #ff1464;
-    transition: all 0.3s ease;
-    transform: translateX(-50%);
-  }
-  
-  .console-tab:hover {
-    color: #ff4d8d;
-    background: rgba(40, 20, 30, 0.5);
-  }
-  
-  .console-tab:hover::after {
-    width: 30px;
-  }
-  
-  .console-tab.active {
-    color: #ff1464;
-    background: rgba(40, 20, 30, 0.7);
-  }
-  
-  .console-tab.active::after {
-    width: 100%;
-  }
-  
-  .console-content {
+  .tab-content {
     display: none;
-    padding: 30px;
-  }
-  
-  .console-content.active {
-    display: block;
-    animation: fadeInUp 0.5s ease;
+    animation: fadeInUp 0.5s ease-out;
   }
   
   @keyframes fadeInUp {
@@ -1199,556 +959,481 @@ const htmlControlPanel = `
     to { opacity: 1; transform: translateY(0); }
   }
   
-  .console-log {
+  .tab-content.active {
+    display: block;
+  }
+  
+  /* Log console */
+  .log-console {
     height: 320px;
     overflow-y: auto;
-    background: rgba(15, 5, 10, 0.9);
-    border-radius: 15px;
-    padding: 25px;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.6;
-    border: 1px solid rgba(255, 20, 100, 0.2);
-    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.5);
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: var(--radius-medium);
+    padding: 20px;
+    border: 1px solid rgba(230, 230, 255, 0.6);
+    font-family: 'Monaco', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
   }
   
   .log-entry {
-    margin-bottom: 15px;
-    padding: 12px 15px;
-    border-radius: 10px;
-    border-left: 5px solid #ff1464;
-    background: rgba(40, 20, 30, 0.5);
-    animation: slideInLeft 0.4s ease;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  @keyframes slideInLeft {
-    from { transform: translateX(-20px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-  
-  .log-entry::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 5px;
-    height: 100%;
-    background: currentColor;
-    opacity: 0.2;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    border-radius: var(--radius-small);
+    background: rgba(255, 255, 255, 0.9);
+    border-left: 3px solid var(--color-lavender);
+    animation: fadeIn 0.5s ease-out;
   }
   
   .log-entry.success {
-    border-left-color: #4dff88;
-    background: rgba(77, 255, 136, 0.1);
+    border-left-color: var(--color-success);
+    background: rgba(140, 233, 154, 0.08);
   }
   
   .log-entry.error {
-    border-left-color: #ff4d4d;
-    background: rgba(255, 77, 77, 0.1);
+    border-left-color: var(--color-error);
+    background: rgba(255, 171, 168, 0.08);
   }
   
   .log-entry.warning {
-    border-left-color: #ffcc4d;
-    background: rgba(255, 204, 77, 0.1);
+    border-left-color: var(--color-warning);
+    background: rgba(255, 216, 168, 0.08);
   }
   
   .log-time {
-    color: #ff80b3;
+    color: var(--color-text-light);
     font-size: 12px;
-    margin-right: 15px;
-    font-weight: bold;
+    margin-right: 12px;
   }
   
-  /* Task ID Box */
-  .task-id-box {
-    background: linear-gradient(135deg, rgba(255, 20, 100, 0.1), rgba(220, 20, 60, 0.1));
-    padding: 25px;
-    border-radius: 15px;
-    margin: 25px 0;
-    border: 2px solid #ff1464;
+  /* Task ID display */
+  .task-id-card {
+    background: linear-gradient(135deg, rgba(230, 230, 255, 0.9), rgba(214, 240, 255, 0.9));
+    padding: 24px;
+    border-radius: var(--radius-large);
     text-align: center;
-    position: relative;
-    overflow: hidden;
-    animation: taskIdPulse 3s infinite alternate;
+    margin: 20px 0;
+    border: 1px solid rgba(230, 230, 255, 0.8);
+    box-shadow: var(--shadow-soft);
+    animation: gentleGlow 3s infinite alternate ease-in-out;
   }
   
-  @keyframes taskIdPulse {
-    0% { 
-      box-shadow: 
-        0 0 15px rgba(255, 20, 100, 0.3),
-        inset 0 0 15px rgba(255, 20, 100, 0.1);
-    }
-    100% { 
-      box-shadow: 
-        0 0 30px rgba(255, 20, 100, 0.6),
-        inset 0 0 20px rgba(255, 20, 100, 0.2);
-    }
+  @keyframes gentleGlow {
+    0% { box-shadow: var(--shadow-soft); }
+    100% { box-shadow: 0 12px 40px rgba(138, 138, 170, 0.15); }
   }
   
   .task-id-label {
-    font-size: 13px;
-    color: #ff99c2;
-    margin-bottom: 12px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
+    font-size: 14px;
+    color: var(--color-text-light);
+    margin-bottom: 8px;
+    display: block;
   }
   
   .task-id-value {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
     font-size: 22px;
-    font-weight: 900;
-    color: #ff4d8d;
+    color: var(--color-text);
     word-break: break-all;
-    font-family: monospace;
-    text-shadow: 0 0 10px rgba(255, 20, 100, 0.5);
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: var(--radius-medium);
+    margin: 12px 0;
+    border: 1px solid rgba(230, 230, 255, 0.8);
   }
   
-  .task-id-note {
-    font-size: 12px;
-    color: #ff80b3;
-    margin-top: 15px;
+  /* Stats grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+    margin: 24px 0;
   }
   
-  /* Cookie Stats */
+  .stat-card {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: var(--radius-medium);
+    padding: 20px;
+    border: 1px solid rgba(230, 230, 255, 0.6);
+    text-align: center;
+    transition: all var(--transition-medium);
+  }
+  
+  .stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-soft);
+  }
+  
+  .stat-value {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 32px;
+    color: var(--color-text);
+    margin-bottom: 4px;
+    line-height: 1;
+  }
+  
+  .stat-label {
+    font-size: 13px;
+    color: var(--color-text-light);
+  }
+  
+  /* Cookie stats */
   .cookie-stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 20px;
-    margin-top: 25px;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
   }
   
-  .cookie-stat-card {
-    background: rgba(40, 20, 30, 0.7);
-    padding: 20px;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 20, 100, 0.3);
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
+  .cookie-stat-item {
+    background: rgba(255, 255, 255, 0.9);
+    border-radius: var(--radius-medium);
+    padding: 16px;
+    text-align: center;
+    border: 1px solid rgba(230, 230, 255, 0.6);
+    transition: all var(--transition-medium);
   }
   
-  .cookie-stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 25px rgba(255, 20, 100, 0.2);
+  .cookie-stat-item.active {
+    border-color: var(--color-success);
+    background: rgba(140, 233, 154, 0.1);
   }
   
-  .cookie-stat-card.active {
-    border-color: #4dff88;
-    background: rgba(77, 255, 136, 0.1);
-  }
-  
-  .cookie-stat-card.inactive {
-    border-color: #ff4d4d;
-    background: rgba(255, 77, 77, 0.1);
+  .cookie-stat-item.inactive {
+    border-color: var(--color-error);
+    background: rgba(255, 171, 168, 0.1);
   }
   
   .cookie-number {
-    font-size: 18px;
-    font-weight: 800;
-    color: #ff4d8d;
-    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 6px;
   }
   
   .cookie-status {
-    font-size: 13px;
-    font-weight: 700;
-    padding: 5px 12px;
-    border-radius: 20px;
-    display: inline-block;
-    margin-bottom: 10px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 4px;
   }
   
   .cookie-active {
-    background: rgba(77, 255, 136, 0.2);
-    color: #4dff88;
+    color: var(--color-success);
   }
   
   .cookie-inactive {
-    background: rgba(255, 77, 77, 0.2);
-    color: #ff4d4d;
+    color: var(--color-error);
   }
   
-  .cookie-messages {
-    font-size: 12px;
-    color: #ff99c2;
-    margin-top: 8px;
-  }
-  
-  /* Status Indicator */
-  .status-indicator {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-left: auto;
-    padding: 10px 20px;
-    border-radius: 25px;
-    background: rgba(40, 20, 30, 0.8);
-    border: 1px solid rgba(255, 20, 100, 0.3);
-    box-shadow: 0 0 15px rgba(255, 20, 100, 0.1);
-  }
-  
-  .status-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #ff1464;
-    animation: statusPulse 2s infinite;
-    box-shadow: 0 0 10px currentColor;
-  }
-  
-  @keyframes statusPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-  
-  .status-dot.ready { background: #4dff88; }
-  .status-dot.running { 
-    background: #ff1464; 
-    animation: statusPulseRunning 1s infinite;
-  }
-  .status-dot.error { background: #ff4d4d; }
-  
-  @keyframes statusPulseRunning {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
-  
-  /* Mobile Responsive */
-  @media (max-width: 900px) {
-    .dashboard-grid {
+  /* Responsive */
+  @media (max-width: 768px) {
+    header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 20px;
+      padding: 24px;
+    }
+    
+    .header-info {
+      width: 100%;
+      justify-content: space-between;
+    }
+    
+    .container {
+      padding: 0 20px;
+      margin: 24px auto;
+    }
+    
+    .card {
+      padding: 24px;
+    }
+    
+    .form-row {
       grid-template-columns: 1fr;
     }
     
-    .form-grid {
-      grid-template-columns: 1fr;
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
     }
     
-    .cookie-options {
+    .buttons-row {
       flex-direction: column;
-    }
-    
-    .action-buttons {
-      flex-direction: column;
+      gap: 16px;
+      align-items: stretch;
     }
     
     .btn {
       width: 100%;
     }
     
+    .tabs {
+      overflow-x: auto;
+    }
+    
+    .tab {
+      padding: 14px 20px;
+      white-space: nowrap;
+    }
+  }
+  
+  @media (max-width: 480px) {
     .stats-grid {
       grid-template-columns: 1fr;
     }
     
-    header {
+    .cookie-stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .radio-group {
       flex-direction: column;
-      align-items: flex-start;
-      gap: 20px;
-      padding: 15px;
+      gap: 12px;
     }
-    
-    .level-indicator {
-      width: 100%;
-      justify-content: space-between;
-    }
-    
-    .status-indicator {
-      margin-left: 0;
-      width: 100%;
-      justify-content: center;
-    }
-    
-    .console-tabs {
-      flex-wrap: wrap;
-    }
-    
-    .console-tab {
-      flex: 1 0 50%;
-      padding: 15px;
-      font-size: 14px;
-    }
-  }
-  
-  /* Scrollbar Styling */
-  ::-webkit-scrollbar {
-    width: 10px;
-  }
-  
-  ::-webkit-scrollbar-track {
-    background: rgba(40, 20, 30, 0.5);
-    border-radius: 5px;
-  }
-  
-  ::-webkit-scrollbar-thumb {
-    background: linear-gradient(135deg, #ff1464, #ff4d8d);
-    border-radius: 5px;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(135deg, #ff2a74, #ff5d9d);
   }
 </style>
 </head>
 <body>
-  <!-- Animated Background Elements -->
-  <div class="lines-container">
-    <div class="line"></div>
-    <div class="line"></div>
-    <div class="line"></div>
-    <div class="line"></div>
-    <div class="line"></div>
+  <!-- Background elements -->
+  <div class="background-elements">
+    <div class="floating-bubble"></div>
+    <div class="floating-bubble"></div>
+    <div class="floating-bubble"></div>
+    <div class="floating-bubble"></div>
   </div>
-  
-  <div class="pulse-glow"></div>
-  
-  <div class="particles" id="particles-container"></div>
   
   <!-- Header -->
   <header>
-    <div class="logo-container">
-      <div class="logo">F</div>
+    <div class="logo">
+      <div class="logo-icon">✉️</div>
       <div class="logo-text">
-        <h1>FAIZU MESSAGING SYSTEM</h1>
-        <div class="subtitle">MULTI-COOKIE CONVO MASTER</div>
+        <h1>Terror Rulex Convo Server ;3</h1>
+        <p>This is Cookies Server Made By Faiizu</p>
       </div>
     </div>
     
-    <div class="level-indicator">
-      <div class="level">
-        <div class="level-label">Power Level</div>
-        <div class="level-bar">
-          <div class="level-fill" style="width: 92%"></div>
-        </div>
-        <div class="level-value">92%</div>
+    <div class="header-info">
+      <div class="system-status">
+        <div class="status-indicator"></div>
+        <span>System Online</span>
       </div>
-      
-      <div class="level">
-        <div class="level-label">Cookie Health</div>
-        <div class="level-bar">
-          <div class="level-fill" style="width: 87%"></div>
-        </div>
-        <div class="level-value">87%</div>
+      <div class="system-status">
+        <span>v2.1.0</span>
       </div>
-    </div>
-    
-    <div class="status-indicator">
-      <div class="status-dot ready" id="status-dot"></div>
-      <span id="status-text">System Ready</span>
     </div>
   </header>
   
+  <!-- Main container -->
   <div class="container">
-    <!-- Dashboard Grid -->
-    <div class="dashboard-grid">
-      <!-- Main Configuration Panel -->
-      <div class="panel">
-        <div class="panel-title">
-          <span>⚙️</span> MISSION CONTROL PANEL
-        </div>
-        
-        <div class="form-grid">
-          <div class="form-group full-width">
-            <div class="cookie-options">
-              <div class="cookie-option active" id="cookie-file-option">
-                <input type="radio" name="cookie-mode" value="file" checked>
-                <div>
-                  <strong>📁 Upload Cookie File</strong>
-                  <div style="font-size: 13px; color: #ff99c2;">.txt or .json (one cookie per line)</div>
-                </div>
-              </div>
-              <div class="cookie-option" id="cookie-paste-option">
-                <input type="radio" name="cookie-mode" value="paste">
-                <div>
-                  <strong>📋 Paste Cookies</strong>
-                  <div style="font-size: 13px; color: #ff99c2;">Manual input, one per line</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="form-group full-width" id="cookie-file-section">
-            <label for="cookie-file">🍪 Cookie Database</label>
-            <div class="file-input" onclick="document.getElementById('cookie-file').click()">
-              <span id="cookie-file-name">Select cookie file...</span>
-              <span>📂</span>
-            </div>
-            <input type="file" id="cookie-file" accept=".txt,.json" style="display: none;">
-            <small style="color: #ff4d8d; display: block; margin-top: 8px;">Multiple cookies supported - System auto-rotates between active accounts</small>
-          </div>
-          
-          <div class="form-group full-width" id="cookie-paste-section" style="display: none;">
-            <label for="cookie-paste">📝 Direct Cookie Input</label>
-            <textarea id="cookie-paste" rows="6" placeholder="Paste cookies here, one account per line..."></textarea>
-            <small style="color: #ff80b3; display: block; margin-top: 8px;">Each line = One Facebook account | System handles rotation automatically</small>
-          </div>
-          
-          <div class="form-group">
-            <label for="haters-name">😈 Hater's Signature</label>
-            <input type="text" id="haters-name" placeholder="Enter hater's name">
-            <small>Prepended to each message</small>
-          </div>
-          
-          <div class="form-group">
-            <label for="thread-id">💬 Target Thread ID</label>
-            <input type="text" id="thread-id" placeholder="Enter thread/group ID">
-            <small>Destination conversation</small>
-          </div>
-          
-          <div class="form-group">
-            <label for="last-here-name">📍 Exit Signature</label>
-            <input type="text" id="last-here-name" placeholder="Enter last here name">
-            <small>Appended to each message</small>
-          </div>
-          
-          <div class="form-group">
-            <label for="delay">⏱️ Attack Interval</label>
-            <input type="number" id="delay" value="5" min="1" max="60">
-            <small>Seconds between messages</small>
-          </div>
-          
-          <div class="form-group full-width">
-            <label for="message-file">📨 Message Arsenal</label>
-            <div class="file-input" onclick="document.getElementById('message-file').click()">
-              <span id="message-file-name">Select messages file...</span>
-              <span>📂</span>
-            </div>
-            <input type="file" id="message-file" accept=".txt" style="display: none;">
-            <small style="color: #ff80b3;">One message per line | Loops automatically when finished</small>
-          </div>
-          
-          <div class="form-group full-width">
-            <div class="action-buttons">
-              <button class="btn btn-primary" id="start-btn">
-                <span>🔥</span> LAUNCH ATTACK
-              </button>
-              <button class="btn btn-secondary" id="pause-btn" disabled>
-                <span>⏸️</span> PAUSE STREAM
-              </button>
-              <button class="btn btn-warning" id="stop-btn" disabled>
-                <span>⏹️</span> ABORT MISSION
-              </button>
-            </div>
-          </div>
+    <!-- Configuration card -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-title-icon">⚙️</div>
+          <h2>Details Penel</h2>
         </div>
       </div>
       
-      <!-- Stats Panel -->
-      <div class="panel stats-panel">
-        <div class="panel-title">
-          <span>📊</span> LIVE COMBAT STATS
-        </div>
-        
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-value" id="stat-sent">0</div>
-            <div class="stat-label">Messages Fired</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-failed">0</div>
-            <div class="stat-label">Messages Failed</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-cookies">0</div>
-            <div class="stat-label">Active Soldiers</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" id="stat-loops">0</div>
-            <div class="stat-label">Battle Cycles</div>
-          </div>
-        </div>
-        
-        <div style="margin-top: 30px;">
-          <div class="panel-title" style="font-size: 17px;">
-            <span>🛡️</span> SYSTEM STATUS
-          </div>
-          <div style="font-size: 14px; color: #ff99c2; line-height: 1.7;">
-            <div><strong>Multi-Cookie Engine:</strong> <span style="color: #4dff88;">OPERATIONAL</span></div>
-            <div><strong>Auto-Recovery:</strong> <span style="color: #4dff88;">ACTIVE</span></div>
-            <div><strong>Cookie Safety:</strong> <span style="color: #4dff88;">NO LOGOUT</span></div>
-            <div><strong>Rotation Mode:</strong> <span style="color: #ffcc4d;">INTELLIGENT</span></div>
-            <div><strong>Stealth Level:</strong> <span style="color: #ff4d8d;">HIGH</span></div>
+      <div class="multi-cookie-info" style="background: rgba(230, 230, 255, 0.2); padding: 20px; border-radius: var(--radius-medium); margin-bottom: 24px; border: 1px solid rgba(230, 230, 255, 0.4);">
+        <h3 style="color: var(--color-text); margin-bottom: 8px; font-size: 16px; display: flex; align-items: center; gap: 8px;">
+          <span style="background: var(--color-sky-blue); width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center;"></span>
+          Multiple Cookie Support
+        </h3>
+        <p style="color: var(--color-text); font-size: 14px; margin-bottom: 8px;">
+          <strong>ultra Future:</strong> multiple cookies in a single file. 
+        </p>
+        <ul style="color: var(--color-text-light); font-size: 13px; padding-left: 20px;">
+          <li>Each cookie on a separate line</li>
+          <li>System automatically uses all available cookies</li>
+          <li>Messages rotate between active cookies</li>
+          <li>Failover protection with automatic recovery</li>
+        </ul>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="cookie-mode">Cookie Input Method</label>
+          <div class="radio-group">
+            <div class="radio-option">
+              <input type="radio" id="cookie-file-mode" name="cookie-mode" value="file" checked>
+              <label for="cookie-file-mode">Upload File</label>
+            </div>
+            <div class="radio-option">
+              <input type="radio" id="cookie-paste-mode" name="cookie-mode" value="paste">
+              <label for="cookie-paste-mode">Paste Text</label>
+            </div>
           </div>
         </div>
         
-        <div id="task-id-container" style="display: none; margin-top: 25px;">
-          <div class="task-id-box">
-            <div class="task-id-label">MISSION ID</div>
-            <div class="task-id-value" id="current-task-id"></div>
-            <div class="task-id-note">Save this ID to control your mission later</div>
-          </div>
+        <div class="form-group">
+          <label for="delay">Message Delay (seconds)</label>
+          <input type="number" id="delay" value="5" min="1" max="60">
+          <span class="hint">Delay between sending messages</span>
         </div>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group" id="cookie-file-wrapper">
+          <label for="cookie-file">Cookie File (.txt or .json)</label>
+          <div class="file-input-wrapper" id="cookie-file-display">
+            <span>Choose a file</span>
+            <span></span>
+          </div>
+          <input type="file" id="cookie-file" accept=".txt or json ">
+          <span class="hint">One cookie per line. Multiple cookies are supported.</span>
+        </div>
+        
+        <div class="form-group" id="cookie-paste-wrapper" style="display: none;">
+          <label for="cookie-paste">Paste Cookies (one per line)</label>
+          <textarea id="cookie-paste" rows="4" placeholder="Paste cookies here, one per line..."></textarea>
+          <span class="hint">_</span>
+        </div>
+      </div>
+      
+      <div class="form-row">
+        <div class="form-group">
+          <label for="haters-name">Heter Name</label>
+          <input type="text" id="haters-name" placeholder="Enter name">
+          <span class="hint">This will be added at First On top of the message</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="thread-id">Thread / Group ID</label>
+          <input type="text" id="thread-id" placeholder="Enter thread or group ID">
+          <span class="hint">Target conversation</span>
+        </div>
+        
+        <div class="form-group">
+          <label for="last-here-name">End Text</label>
+          <input type="text" id="last-here-name" placeholder="Enter footer text">
+          <span class="hint">This will be added at the end of each message</span>
+        </div>
+      </div>
+      
+      <div class="form-group">
+        <label for="message-file">Messages File (.txt)</label>
+        <div class="file-input-wrapper" id="message-file-display">
+          <span>Choose a messages file</span>
+          <span>📄</span>
+        </div>
+        <input type="file" id="message-file" accept=".txt">
+        <span class="hint">One message per line. Messages will loop when finished.</span>
+      </div>
+      
+      <div class="buttons-row">
+        <button class="btn btn-primary" id="start-btn">
+          <span></span>
+          Start Sending
+        </button>
+        <div class="status-indicator-text" id="status">Status: Ready</div>
       </div>
     </div>
     
-    <!-- Console Panel -->
-    <div class="panel console-panel">
-      <div class="console-tabs">
-        <div class="console-tab active" onclick="switchTab('console')">📡 LIVE TRANSMISSION</div>
-        <div class="console-tab" onclick="switchTab('stop')">⏹️ MISSION CONTROL</div>
-        <div class="console-tab" onclick="switchTab('view')">👁️ RECON DATA</div>
-        <div class="console-tab" onclick="switchTab('cookies')">🪪 SOLDIER STATUS</div>
+    <!-- Console card -->
+    <div class="card">
+      <div class="tabs">
+        <button class="tab active" data-tab="log">Console Logs</button>
+        <button class="tab" data-tab="stop">Stop Task</button>
+        <button class="tab" data-tab="view">Task Details</button>
       </div>
       
-      <!-- Console Tab -->
-      <div id="console-tab" class="console-content active">
-        <div class="console-log" id="console-log"></div>
+      <!-- Console Logs Tab -->
+      <div id="log-tab" class="tab-content active">
+        <div class="log-console" id="log-container">
+          <div class="log-entry">
+            <span class="log-time">10:30:15</span>
+            System initialized and ready.
+          </div>
+          <div class="log-entry">
+            <span class="log-time">10:30:22</span>
+            Welcome to the Multi-User Messaging System.
+          </div>
+        </div>
       </div>
       
       <!-- Stop Task Tab -->
-      <div id="stop-tab" class="console-content">
-        <h3 style="color: #ff4d8d; margin-top: 0;">Mission Abort Protocol</h3>
-        <p style="color: #ff99c2; margin-bottom: 25px;">Enter your Mission ID to safely terminate operations. All accounts remain active and logged in.</p>
-        
+      <div id="stop-tab" class="tab-content">
         <div class="form-group">
-          <label for="stop-task-id">Mission ID</label>
-          <input type="text" id="stop-task-id" placeholder="Paste your mission ID here">
+          <label for="stop-task-id">Task ID</label>
+          <input type="text" id="stop-task-id" placeholder="Enter your task ID to stop">
+          <span class="hint">Find your task ID in the console logs or task details.</span>
         </div>
         
-        <div class="action-buttons">
-          <button class="btn btn-warning" id="stop-task-btn">
-            <span>⚠️</span> EXECUTE ABORT
+        <div class="buttons-row" style="border-top: none; margin-top: 0; padding-top: 0;">
+          <button class="btn btn-secondary" id="stop-btn">
+            <span>⏹️</span>
+            Stop Task
           </button>
         </div>
         
-        <div id="stop-result" style="margin-top: 25px;"></div>
-        
-        <div style="background: rgba(77, 255, 136, 0.1); border: 1px solid rgba(77, 255, 136, 0.3); border-radius: 12px; padding: 20px; margin-top: 25px;">
-          <div style="color: #4dff88; font-weight: 800; margin-bottom: 10px;">🛡️ SAFETY PROTOCOL ACTIVE</div>
-          <div style="color: #ff99c2; font-size: 14px;">All Facebook accounts remain logged in after mission termination. Cookies are preserved for future operations with zero relogin required.</div>
+        <div class="task-id-card" style="margin-top: 20px; display: none;" id="stop-result">
+          <div class="task-id-label">Task Status</div>
+          <div class="task-id-value" id="stop-result-text"></div>
+          <div style="font-size: 13px; color: var(--color-text-light); margin-top: 12px;">
+            Your Facebook IDs remain logged in and can be reused.
+          </div>
         </div>
       </div>
       
-      <!-- View Details Tab -->
-      <div id="view-tab" class="console-content">
-        <h3 style="color: #ff80b3; margin-top: 0;">Mission Reconnaissance</h3>
-        <p style="color: #ff99c2; margin-bottom: 25px;">Enter Mission ID to retrieve detailed combat analytics and transmission logs.</p>
-        
+      <!-- View Task Details Tab -->
+      <div id="view-tab" class="tab-content">
         <div class="form-group">
-          <label for="view-task-id">Mission ID</label>
-          <input type="text" id="view-task-id" placeholder="Paste your mission ID here">
+          <label for="view-task-id">Task ID</label>
+          <input type="text" id="view-task-id" placeholder="Enter your task ID to view details">
+          <span class="hint">Enter a task ID to view its current status and statistics.</span>
         </div>
         
-        <div class="action-buttons">
-          <button class="btn btn-secondary" id="view-details-btn">
-            <span>🔍</span> RETRIEVE DATA
+        <div class="buttons-row" style="border-top: none; margin-top: 0; padding-top: 0;">
+          <button class="btn btn-secondary" id="view-btn">
+            <span>👁️</span>
+            View Task Details
           </button>
         </div>
         
-        <div id="task-details-container" style="display: none; margin-top: 30px;">
-          <!-- Task details will be loaded here -->
-        </div>
-      </div>
-      
-      <!-- Cookie Stats Tab -->
-      <div id="cookies-tab" class="console-content">
-        <h3 style="color: #ff4d8d; margin-top: 0;">Soldier Roster & Status</h3>
-        <p style="color: #ff99c2; margin-bottom: 25px;">Live status of all active cookie accounts in current mission.</p>
-        
-        <div id="cookie-stats-container">
-          <div style="text-align: center; padding: 50px; color: #ff4d8d;">
-            <div style="font-size: 60px; margin-bottom: 20px;">🪪</div>
-            <div style="font-size: 18px; font-weight: 700;">NO ACTIVE MISSION</div>
-            <div style="color: #ff80b3; margin-top: 10px;">Launch a mission to see soldier status</div>
+        <div id="task-details" style="display: none;">
+          <div class="task-id-card">
+            <div class="task-id-label">Your Task ID</div>
+            <div class="task-id-value" id="detail-task-id">TASK-ABC-123-XYZ</div>
+            <div style="font-size: 13px; color: var(--color-text-light); margin-top: 12px;">
+              Copy this ID to stop or monitor your task later.
+            </div>
+          </div>
+          
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value" id="detail-sent">0</div>
+              <div class="stat-label">Messages Sent</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="detail-failed">0</div>
+              <div class="stat-label">Messages Failed</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="detail-active-cookies">0</div>
+              <div class="stat-label">Active Cookies</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="detail-total-cookies">0</div>
+              <div class="stat-label">Total Cookies</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="detail-loops">0</div>
+              <div class="stat-label">Loops Completed</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value" id="detail-restarts">0</div>
+              <div class="stat-label">Auto Restarts</div>
+            </div>
+          </div>
+          
+          <h3 style="color: var(--color-text); margin: 24px 0 16px 0; font-size: 18px;">Cookie Statistics</h3>
+          <div class="cookie-stats-grid" id="detail-cookie-stats">
+            <!-- Cookie stats will be populated here -->
+          </div>
+          
+          <h3 style="color: var(--color-text); margin: 24px 0 16px 0; font-size: 18px;">Recent Activity</h3>
+          <div class="log-console" id="detail-log" style="height: 200px;">
+            <!-- Task logs will be populated here -->
           </div>
         </div>
       </div>
@@ -1756,494 +1441,298 @@ const htmlControlPanel = `
   </div>
 
 <script>
-  // Initialize variables
-  let currentTaskId = null;
-  let isRunning = false;
-  let isPaused = false;
-  let stats = {
-    sent: 0,
-    failed: 0,
-    cookies: 0,
-    loops: 0
-  };
-  
-  // DOM Elements
-  const consoleLog = document.getElementById('console-log');
-  const statusDot = document.getElementById('status-dot');
-  const statusText = document.getElementById('status-text');
-  const startBtn = document.getElementById('start-btn');
-  const pauseBtn = document.getElementById('pause-btn');
-  const stopBtn = document.getElementById('stop-btn');
-  const stopTaskBtn = document.getElementById('stop-task-btn');
-  const viewDetailsBtn = document.getElementById('view-details-btn');
-  
-  // Create floating particles
-  function createParticles() {
-    const container = document.getElementById('particles-container');
-    for (let i = 0; i < 50; i++) {
-      const particle = document.createElement('div');
-      particle.className = 'particle';
-      particle.style.left = Math.random() * 100 + 'vw';
-      particle.style.top = Math.random() * 100 + 'vh';
-      particle.style.animationDelay = Math.random() * 20 + 's';
-      particle.style.animationDuration = (Math.random() * 10 + 15) + 's';
-      container.appendChild(particle);
-    }
-  }
-  
-  // File input handlers
-  document.getElementById('cookie-file').addEventListener('change', function(e) {
-    const fileName = e.target.files[0] ? e.target.files[0].name : 'Select cookie file...';
-    document.getElementById('cookie-file-name').textContent = fileName;
-  });
-  
-  document.getElementById('message-file').addEventListener('change', function(e) {
-    const fileName = e.target.files[0] ? e.target.files[0].name : 'Select messages file...';
-    document.getElementById('message-file-name').textContent = fileName;
-  });
-  
-  // Cookie mode toggle
-  document.querySelectorAll('input[name="cookie-mode"]').forEach(radio => {
-    radio.addEventListener('change', function() {
-      const isFileMode = this.value === 'file';
-      
-      // Update UI
-      document.getElementById('cookie-file-option').classList.toggle('active', isFileMode);
-      document.getElementById('cookie-paste-option').classList.toggle('active', !isFileMode);
-      document.getElementById('cookie-file-section').style.display = isFileMode ? 'block' : 'none';
-      document.getElementById('cookie-paste-section').style.display = isFileMode ? 'none' : 'block';
+  // Initialize the UI
+  document.addEventListener('DOMContentLoaded', function() {
+    // Background elements animation
+    const bubbles = document.querySelectorAll('.floating-bubble');
+    bubbles.forEach((bubble, index) => {
+      bubble.style.animationDelay = `${index * 5}s`;
     });
-  });
-  
-  // Tab switching
-  function switchTab(tabName) {
-    // Update tabs
-    document.querySelectorAll('.console-tab').forEach(tab => {
-      tab.classList.remove('active');
-    });
-    event.target.classList.add('active');
     
-    // Update content
-    document.querySelectorAll('.console-content').forEach(content => {
-      content.classList.remove('active');
-    });
-    document.getElementById(tabName + '-tab').classList.add('active');
-  }
-  
-  // Log function with animations
-  function addLog(message, type = 'info') {
-    const time = new Date().toLocaleTimeString();
-    const logEntry = document.createElement('div');
-    logEntry.className = `log-entry ${type}`;
-    logEntry.innerHTML = `<span class="log-time">[${time}]</span> ${message}`;
-    consoleLog.appendChild(logEntry);
+    // Tab switching
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
     
-    // Remove old logs if too many
-    if (consoleLog.children.length > 50) {
-      consoleLog.removeChild(consoleLog.firstChild);
-    }
-    
-    consoleLog.scrollTop = consoleLog.scrollHeight;
-  }
-  
-  // Update status with animation
-  function updateStatus(status, type = 'ready') {
-    statusText.textContent = status;
-    statusDot.className = `status-dot ${type}`;
-    
-    // Add status change log
-    if (type === 'running') {
-      addLog(`🔴 STATUS CHANGE: ${status}`, 'warning');
-    } else if (type === 'error') {
-      addLog(`🛑 STATUS CHANGE: ${status}`, 'error');
-    } else {
-      addLog(`🟢 STATUS CHANGE: ${status}`, 'success');
-    }
-  }
-  
-  // Update stats with animation
-  function updateStats() {
-    // Animate stat changes
-    const statElements = {
-      sent: document.getElementById('stat-sent'),
-      failed: document.getElementById('stat-failed'),
-      cookies: document.getElementById('stat-cookies'),
-      loops: document.getElementById('stat-loops')
-    };
-    
-    for (const key in statElements) {
-      if (statElements[key]) {
-        const oldValue = parseInt(statElements[key].textContent) || 0;
-        const newValue = stats[key];
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const targetTab = tab.getAttribute('data-tab');
         
-        if (oldValue !== newValue) {
-          // Add animation class
-          statElements[key].parentElement.classList.add('stat-card');
-          setTimeout(() => {
-            statElements[key].parentElement.classList.remove('stat-card');
-          }, 300);
-          
-          // Update value
-          statElements[key].textContent = newValue;
+        // Update active tab
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Show target content
+        tabContents.forEach(content => {
+          content.classList.remove('active');
+          if (content.id === `${targetTab}-tab`) {
+            content.classList.add('active');
+          }
+        });
+      });
+    });
+    
+    // Cookie mode toggle
+    const cookieModeRadios = document.querySelectorAll('input[name="cookie-mode"]');
+    const cookieFileWrapper = document.getElementById('cookie-file-wrapper');
+    const cookiePasteWrapper = document.getElementById('cookie-paste-wrapper');
+    
+    cookieModeRadios.forEach(radio => {
+      radio.addEventListener('change', () => {
+        if (radio.value === 'file') {
+          cookieFileWrapper.style.display = 'block';
+          cookiePasteWrapper.style.display = 'none';
+        } else {
+          cookieFileWrapper.style.display = 'none';
+          cookiePasteWrapper.style.display = 'block';
         }
+      });
+    });
+    
+    // File input display
+    const cookieFileInput = document.getElementById('cookie-file');
+    const cookieFileDisplay = document.getElementById('cookie-file-display');
+    const messageFileInput = document.getElementById('message-file');
+    const messageFileDisplay = document.getElementById('message-file-display');
+    
+    cookieFileInput.addEventListener('change', function() {
+      if (this.files.length > 0) {
+        cookieFileDisplay.innerHTML = `<span>${this.files[0].name}</span> <span>📁</span>`;
+      }
+    });
+    
+    messageFileInput.addEventListener('change', function() {
+      if (this.files.length > 0) {
+        messageFileDisplay.innerHTML = `<span>${this.files[0].name}</span> <span>📄</span>`;
+      }
+    });
+    
+    // Mock WebSocket connection (in a real app, this would connect to a server)
+    let mockTaskId = null;
+    let logEntries = 0;
+    
+    // Start button handler
+    const startBtn = document.getElementById('start-btn');
+    const statusDiv = document.getElementById('status');
+    const logContainer = document.getElementById('log-container');
+    
+    function addLogEntry(message, type = '') {
+      logEntries++;
+      const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+      const logEntry = document.createElement('div');
+      logEntry.className = `log-entry ${type}`;
+      logEntry.innerHTML = `<span class="log-time">${time}</span> ${message}`;
+      logContainer.appendChild(logEntry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+      
+      // Limit logs to 50 entries
+      if (logEntries > 50) {
+        logContainer.removeChild(logContainer.firstChild);
+        logEntries--;
       }
     }
-  }
-  
-  // Show task ID with animation
-  function showTaskId(taskId) {
-    currentTaskId = taskId;
-    document.getElementById('current-task-id').textContent = taskId;
-    document.getElementById('task-id-container').style.display = 'block';
     
-    // Add animation
-    const taskBox = document.querySelector('.task-id-box');
-    taskBox.style.animation = 'none';
-    setTimeout(() => {
-      taskBox.style.animation = 'taskIdPulse 3s infinite alternate';
-    }, 10);
-  }
-  
-  // Hide task ID
-  function hideTaskId() {
-    document.getElementById('task-id-container').style.display = 'none';
-  }
-  
-  // Update cookie stats display
-  function updateCookieStats() {
-    const container = document.getElementById('cookie-stats-container');
-    
-    if (!isRunning) {
-      container.innerHTML = `
-        <div style="text-align: center; padding: 50px; color: #ff4d8d;">
-          <div style="font-size: 60px; margin-bottom: 20px;">🪪</div>
-          <div style="font-size: 18px; font-weight: 700;">NO ACTIVE MISSION</div>
-          <div style="color: #ff80b3; margin-top: 10px;">Launch a mission to see soldier status</div>
-        </div>
-      `;
-      return;
-    }
-    
-    let html = '<div class="cookie-stats-grid">';
-    
-    // Generate dynamic cookie stats
-    const cookieCount = Math.floor(Math.random() * 3) + 3; // 3-5 cookies
-    stats.cookies = cookieCount;
-    
-    for (let i = 1; i <= cookieCount; i++) {
-      const isActive = Math.random() > 0.3; // 70% active
-      const messagesSent = Math.floor(Math.random() * 40) + 10 + stats.sent;
-      const health = Math.floor(Math.random() * 30) + 70;
+    startBtn.addEventListener('click', () => {
+      // Validate inputs
+      const cookieMode = document.querySelector('input[name="cookie-mode"]:checked').value;
+      const hatersName = document.getElementById('haters-name').value;
+      const threadId = document.getElementById('thread-id').value;
+      const lastHereName = document.getElementById('last-here-name').value;
+      const delay = document.getElementById('delay').value;
       
-      html += `
-        <div class="cookie-stat-card ${isActive ? 'active' : 'inactive'}">
-          <div class="cookie-number">SOLDIER #${i}</div>
+      if (cookieMode === 'file' && cookieFileInput.files.length === 0) {
+        addLogEntry('Please select a cookie file.', 'error');
+        return;
+      }
+      
+      if (cookieMode === 'paste' && !document.getElementById('cookie-paste').value.trim()) {
+        addLogEntry('Please paste cookies in the text area.', 'error');
+        return;
+      }
+      
+      if (!hatersName) {
+        addLogEntry('Please enter a sender name.', 'error');
+        return;
+      }
+      
+      if (!threadId) {
+        addLogEntry('Please enter a thread/group ID.', 'error');
+        return;
+      }
+      
+      if (!lastHereName) {
+        addLogEntry('Please enter footer text.', 'error');
+        return;
+      }
+      
+      if (messageFileInput.files.length === 0) {
+        addLogEntry('Please select a messages file.', 'error');
+        return;
+      }
+      
+      // Simulate starting a task
+      startBtn.disabled = true;
+      statusDiv.textContent = 'Status: Starting...';
+      
+      addLogEntry('Starting message sending task...', '');
+      
+      setTimeout(() => {
+        mockTaskId = 'TASK-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+        
+        addLogEntry(`Task started successfully with ID: ${mockTaskId}`, 'success');
+        addLogEntry('Multiple Cookie Support: Active', '');
+        addLogEntry('Auto-recovery enabled - Task will auto-restart on errors', '');
+        addLogEntry('Cookie Safety: Your IDs will NOT logout when you stop task', '');
+        
+        // Show task ID in console
+        addLogEntry(`Task ID: ${mockTaskId} - Copy this to stop or view task later`, '');
+        
+        statusDiv.textContent = 'Status: Running';
+        startBtn.disabled = false;
+        
+        // Simulate periodic updates
+        simulateTaskUpdates();
+      }, 1500);
+    });
+    
+    // Stop button handler
+    const stopBtn = document.getElementById('stop-btn');
+    const stopResult = document.getElementById('stop-result');
+    const stopResultText = document.getElementById('stop-result-text');
+    
+    stopBtn.addEventListener('click', () => {
+      const taskIdInput = document.getElementById('stop-task-id').value.trim();
+      
+      if (!taskIdInput) {
+        stopResult.style.display = 'block';
+        stopResultText.textContent = 'Please enter a task ID';
+        stopResult.style.background = 'linear-gradient(135deg, rgba(255, 171, 168, 0.9), rgba(255, 216, 168, 0.9))';
+        return;
+      }
+      
+      stopResult.style.display = 'block';
+      stopResultText.textContent = `Stopping task: ${taskIdInput}...`;
+      stopResult.style.background = 'linear-gradient(135deg, rgba(255, 216, 168, 0.9), rgba(230, 230, 255, 0.9))';
+      
+      setTimeout(() => {
+        stopResultText.textContent = `Task ${taskIdInput} stopped successfully`;
+        stopResult.style.background = 'linear-gradient(135deg, rgba(140, 233, 154, 0.9), rgba(214, 240, 255, 0.9))';
+        
+        // Also add to console logs
+        addLogEntry(`Task ${taskIdInput} has been stopped`, '');
+        addLogEntry('Your Facebook IDs remain logged in - Same cookies can be reused', 'success');
+      }, 2000);
+    });
+    
+    // View task button handler
+    const viewBtn = document.getElementById('view-btn');
+    const taskDetails = document.getElementById('task-details');
+    
+    viewBtn.addEventListener('click', () => {
+      const taskIdInput = document.getElementById('view-task-id').value.trim();
+      
+      if (!taskIdInput) {
+        taskDetails.style.display = 'block';
+        document.getElementById('detail-task-id').textContent = 'Please enter a task ID';
+        return;
+      }
+      
+      taskDetails.style.display = 'block';
+      document.getElementById('detail-task-id').textContent = taskIdInput;
+      
+      // Simulate task data
+      document.getElementById('detail-sent').textContent = Math.floor(Math.random() * 100);
+      document.getElementById('detail-failed').textContent = Math.floor(Math.random() * 5);
+      document.getElementById('detail-active-cookies').textContent = Math.floor(Math.random() * 5) + 1;
+      document.getElementById('detail-total-cookies').textContent = Math.floor(Math.random() * 8) + 2;
+      document.getElementById('detail-loops').textContent = Math.floor(Math.random() * 10);
+      document.getElementById('detail-restarts').textContent = Math.floor(Math.random() * 3);
+      
+      // Populate cookie stats
+      const cookieStatsContainer = document.getElementById('detail-cookie-stats');
+      cookieStatsContainer.innerHTML = '';
+      
+      const totalCookies = parseInt(document.getElementById('detail-total-cookies').textContent);
+      const activeCookies = parseInt(document.getElementById('detail-active-cookies').textContent);
+      
+      for (let i = 1; i <= totalCookies; i++) {
+        const isActive = i <= activeCookies;
+        const messagesSent = Math.floor(Math.random() * 20);
+        
+        const cookieStat = document.createElement('div');
+        cookieStat.className = `cookie-stat-item ${isActive ? 'active' : 'inactive'}`;
+        cookieStat.innerHTML = `
+          <div class="cookie-number">Cookie ${i}</div>
           <div class="cookie-status ${isActive ? 'cookie-active' : 'cookie-inactive'}">
-            ${isActive ? '🟢 COMBAT READY' : '🔴 INACTIVE'}
+            ${isActive ? '🟢 Active' : '🔴 Inactive'}
           </div>
-          <div class="cookie-messages">Ammo Fired: ${messagesSent} rounds</div>
-          <div class="cookie-messages">Health: ${health}%</div>
-        </div>
-      `;
-    }
-    
-    html += '</div>';
-    container.innerHTML = html;
-    updateStats();
-  }
-  
-  // Mission simulation
-  function simulateMission() {
-    if (!isRunning || isPaused) return;
-    
-    // Simulate sending messages
-    const messagesPerTick = Math.floor(Math.random() * 2) + 1;
-    stats.sent += messagesPerTick;
-    
-    // Occasionally fail a message
-    if (Math.random() > 0.85) {
-      stats.failed += 1;
-      addLog(`❌ Message failed - Rotating to next soldier`, 'error');
-    } else {
-      // Success log
-      const cookieNum = Math.floor(Math.random() * stats.cookies) + 1;
-      const messages = [
-        `✅ Message delivered via Soldier #${cookieNum}`,
-        `🎯 Direct hit via Soldier #${cookieNum}`,
-        `⚡ Rapid fire via Soldier #${cookieNum}`,
-        `🔫 Suppressive fire via Soldier #${cookieNum}`
-      ];
-      addLog(messages[Math.floor(Math.random() * messages.length)], 'success');
-    }
-    
-    // Update loops
-    stats.loops = Math.floor(stats.sent / 30);
-    
-    // Update stats
-    updateStats();
-    
-    // Occasionally update cookie stats
-    if (Math.random() > 0.7) {
-      updateCookieStats();
-    }
-    
-    // Occasionally add system logs
-    if (Math.random() > 0.9) {
-      const systemLogs = [
-        `🔄 Auto-rotating to next available soldier`,
-        `🛡️ Cookie safety check passed`,
-        `📊 Mission efficiency: ${Math.floor(Math.random() * 30) + 70}%`,
-        `⚙️ System optimization in progress`
-      ];
-      addLog(systemLogs[Math.floor(Math.random() * systemLogs.length)], 'warning');
-    }
-  }
-  
-  // Start button handler
-  startBtn.addEventListener('click', function() {
-    // Validate inputs
-    const cookieMode = document.querySelector('input[name="cookie-mode"]:checked').value;
-    const hatersName = document.getElementById('haters-name').value.trim();
-    const threadId = document.getElementById('thread-id').value.trim();
-    const lastHereName = document.getElementById('last-here-name').value.trim();
-    const delay = document.getElementById('delay').value;
-    
-    if (cookieMode === 'file' && !document.getElementById('cookie-file').files.length) {
-      addLog('Please select a cookie file', 'error');
-      return;
-    }
-    
-    if (cookieMode === 'paste' && !document.getElementById('cookie-paste').value.trim()) {
-      addLog('Please paste cookies in the text area', 'error');
-      return;
-    }
-    
-    if (!hatersName) {
-      addLog('Please enter Hater\'s Signature', 'error');
-      return;
-    }
-    
-    if (!threadId) {
-      addLog('Please enter Target Thread ID', 'error');
-      return;
-    }
-    
-    if (!lastHereName) {
-      addLog('Please enter Exit Signature', 'error');
-      return;
-    }
-    
-    if (!document.getElementById('message-file').files.length) {
-      addLog('Please select a messages file', 'error');
-      return;
-    }
-    
-    // Mission start
-    isRunning = true;
-    isPaused = false;
-    updateStatus('MISSION ACTIVE', 'running');
-    
-    // Update buttons
-    startBtn.disabled = true;
-    startBtn.innerHTML = '<span>🔥</span> MISSION ACTIVE';
-    pauseBtn.disabled = false;
-    pauseBtn.innerHTML = '<span>⏸️</span> PAUSE STREAM';
-    stopBtn.disabled = false;
-    
-    // Generate mission ID
-    const missionId = 'FAIZU-' + Date.now().toString(16).toUpperCase() + '-' + 
-                     Math.random().toString(36).substr(2, 6).toUpperCase();
-    showTaskId(missionId);
-    
-    // Reset stats
-    stats = { sent: 0, failed: 0, cookies: 0, loops: 0 };
-    updateStats();
-    
-    // Mission start logs
-    addLog(`🚀 MISSION LAUNCHED: ${missionId}`, 'success');
-    addLog(`🎯 TARGET ACQUIRED: ${threadId}`, 'warning');
-    addLog(`🪪 MULTI-SOLDIER MODE: ACTIVATED`, 'success');
-    addLog(`⚡ ATTACK INTERVAL: ${delay} seconds`, 'info');
-    addLog(`🛡️ SAFETY PROTOCOL: NO AUTO-LOGOUT`, 'success');
-    addLog(`🔥 INITIATING COMBAT SEQUENCE...`, 'warning');
-    
-    // Initialize cookie stats
-    setTimeout(() => {
-      updateCookieStats();
-      addLog(`✅ SOLDIER DEPLOYMENT: ${stats.cookies} accounts ready`, 'success');
-    }, 1000);
-    
-    // Start mission simulation
-    const missionInterval = setInterval(simulateMission, 2000);
-    
-    // Store interval for cleanup
-    window.missionInterval = missionInterval;
-    
-    // Switch to console tab
-    switchTab('console');
-  });
-  
-  // Pause button handler
-  pauseBtn.addEventListener('click', function() {
-    if (!isRunning) return;
-    
-    isPaused = !isPaused;
-    
-    if (isPaused) {
-      updateStatus('MISSION PAUSED', 'error');
-      pauseBtn.innerHTML = '<span>▶️</span> RESUME STREAM';
-      addLog('⏸️ MISSION PAUSED - Holding position', 'warning');
-    } else {
-      updateStatus('MISSION ACTIVE', 'running');
-      pauseBtn.innerHTML = '<span>⏸️</span> PAUSE STREAM';
-      addLog('▶️ MISSION RESUMED - Continuing assault', 'success');
-    }
-  });
-  
-  // Stop button handler (current mission)
-  stopBtn.addEventListener('click', function() {
-    if (!currentTaskId) return;
-    
-    isRunning = false;
-    isPaused = false;
-    updateStatus('MISSION TERMINATED', 'ready');
-    
-    // Clear mission interval
-    if (window.missionInterval) {
-      clearInterval(window.missionInterval);
-    }
-    
-    // Update buttons
-    startBtn.disabled = false;
-    startBtn.innerHTML = '<span>🔥</span> LAUNCH ATTACK';
-    pauseBtn.disabled = true;
-    pauseBtn.innerHTML = '<span>⏸️</span> PAUSE STREAM';
-    stopBtn.disabled = true;
-    
-    // Mission end logs
-    addLog(`⏹️ MISSION TERMINATED: ${currentTaskId}`, 'warning');
-    addLog(`🛡️ ALL SOLDIERS SECURE: Accounts remain logged in`, 'success');
-    addLog(`📊 FINAL COMBAT REPORT: ${stats.sent} fired, ${stats.failed} failed`, 'info');
-    addLog(`✅ READY FOR NEXT MISSION`, 'success');
-    
-    // Hide mission ID
-    hideTaskId();
-    
-    // Update cookie stats to show inactive
-    updateCookieStats();
-  });
-  
-  // Stop mission by ID handler
-  stopTaskBtn.addEventListener('click', function() {
-    const taskId = document.getElementById('stop-task-id').value.trim();
-    
-    if (!taskId) {
-      document.getElementById('stop-result').innerHTML = `
-        <div class="log-entry error">Please enter a Mission ID</div>
-      `;
-      return;
-    }
-    
-    document.getElementById('stop-result').innerHTML = `
-      <div class="log-entry warning">🔴 TERMINATING MISSION: ${taskId}...</div>
-    `;
-    
-    // Simulate API call
-    setTimeout(() => {
-      document.getElementById('stop-result').innerHTML = `
-        <div class="log-entry success">✅ MISSION TERMINATED: ${taskId}</div>
-        <div class="log-entry success">🛡️ All soldiers secured - Ready for redeployment</div>
-      `;
+          <div style="font-size: 12px; color: var(--color-text-light);">Sent: ${messagesSent} messages</div>
+        `;
+        cookieStatsContainer.appendChild(cookieStat);
+      }
       
-      // Clear input
-      document.getElementById('stop-task-id').value = '';
-    }, 2000);
-  });
-  
-  // View details handler
-  viewDetailsBtn.addEventListener('click', function() {
-    const taskId = document.getElementById('view-task-id').value.trim();
+      // Populate recent activity
+      const detailLog = document.getElementById('detail-log');
+      detailLog.innerHTML = '';
+      
+      const activities = [
+        'Task initialized with multiple cookies',
+        'Message rotation started between 3 active cookies',
+        'Sent message: "Hello from the system"',
+        'Cookie #2 temporarily inactive - failover to cookie #3',
+        'Auto-recovery completed for cookie #2',
+        'Completed message loop #1',
+        'All cookies active and functioning'
+      ];
+      
+      activities.forEach((activity, index) => {
+        const time = new Date(Date.now() - (activities.length - index) * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        const logEntry = document.createElement('div');
+        logEntry.className = 'log-entry';
+        logEntry.innerHTML = `<span class="log-time">${time}</span> ${activity}`;
+        detailLog.appendChild(logEntry);
+      });
+    });
     
-    if (!taskId) {
-      addLog('Please enter a Mission ID to retrieve data', 'error');
-      return;
+    // Simulate task updates (for demo purposes)
+    function simulateTaskUpdates() {
+      if (!mockTaskId) return;
+      
+      const updateInterval = setInterval(() => {
+        if (Math.random() > 0.7) {
+          const messages = [
+            'Message sent successfully via cookie rotation',
+            'Completed message batch #' + Math.floor(Math.random() * 10),
+            'All cookies active and responding',
+            'Auto-recovery mechanism is idle (no errors detected)'
+          ];
+          
+          addLogEntry(messages[Math.floor(Math.random() * messages.length)], 'success');
+        }
+        
+        // 5% chance of simulated error
+        if (Math.random() > 0.95) {
+          addLogEntry('Temporary connection issue - auto-recovery activated', 'warning');
+          
+          setTimeout(() => {
+            addLogEntry('Connection restored - continuing normal operation', 'success');
+          }, 3000);
+        }
+      }, 8000);
+      
+      // Clear interval after 2 minutes for demo
+      setTimeout(() => {
+        clearInterval(updateInterval);
+      }, 120000);
     }
     
-    // Simulate loading
-    document.getElementById('task-details-container').innerHTML = `
-      <div style="text-align: center; padding: 30px;">
-        <div class="stat-value" style="color: #ff4d8d; font-size: 24px;">🔍 RETRIEVING MISSION DATA...</div>
-      </div>
-    `;
-    document.getElementById('task-details-container').style.display = 'block';
-    
-    // Simulate API response
+    // Add some initial demo logs
     setTimeout(() => {
-      document.getElementById('task-details-container').innerHTML = `
-        <div class="task-id-box">
-          <div class="task-id-label">MISSION INTELLIGENCE</div>
-          <div class="task-id-value">${taskId}</div>
-          <div class="task-id-note">Last transmission: 5 minutes ago | Status: COMPLETED</div>
-        </div>
-        
-        <div class="stats-grid" style="margin-top: 25px;">
-          <div class="stat-card">
-            <div class="stat-value" style="color: #ff1464;">327</div>
-            <div class="stat-label">Messages Fired</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" style="color: #ff4d8d;">18</div>
-            <div class="stat-label">Messages Failed</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" style="color: #ff80b3;">5</div>
-            <div class="stat-label">Active Soldiers</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-value" style="color: #dc143c;">10</div>
-            <div class="stat-label">Battle Cycles</div>
-          </div>
-        </div>
-        
-        <h4 style="color: #ff99c2; margin-top: 30px; border-bottom: 2px solid rgba(255, 20, 100, 0.3); padding-bottom: 10px;">RECENT TRANSMISSIONS</h4>
-        <div class="console-log" style="height: 250px; margin-top: 15px;">
-          <div class="log-entry success">[14:45:22] ✅ Direct hit via Soldier #3</div>
-          <div class="log-entry info">[14:45:10] 🔄 Rotating to Soldier #3</div>
-          <div class="log-entry success">[14:44:58] 🎯 Message delivered via Soldier #2</div>
-          <div class="log-entry warning">[14:44:45] ⚙️ System optimization complete</div>
-          <div class="log-entry error">[14:44:32] ❌ Soldier #1 failed - Auto-rotating</div>
-          <div class="log-entry success">[14:44:20] 🔥 Rapid fire via Soldier #1</div>
-          <div class="log-entry warning">[14:44:05] 📊 Efficiency: 92% | Health: 87%</div>
-        </div>
-      `;
-    }, 1500);
-  });
-  
-  // Initialize
-  document.addEventListener('DOMContentLoaded', function() {
-    // Create background particles
-    createParticles();
-    
-    // Set up event listeners for cookie options
-    document.getElementById('cookie-file-option').addEventListener('click', function() {
-      document.querySelector('input[name="cookie-mode"][value="file"]').click();
-    });
-    
-    document.getElementById('cookie-paste-option').addEventListener('click', function() {
-      document.querySelector('input[name="cookie-mode"][value="paste"]').click();
-    });
-    
-    // Initial logs
-    setTimeout(() => {
-      addLog('🚀 FAIZU MESSAGING SYSTEM v2.0 INITIALIZED', 'success');
-      addLog('🪪 MULTI-COOKIE ENGINE: READY', 'info');
-      addLog('🛡️ SAFETY PROTOCOLS: ACTIVE', 'success');
-      addLog('⚡ HIGH-PERFORMANCE MODE: ENABLED', 'warning');
-      addLog('✅ AWAITING MISSION PARAMETERS...', 'info');
+      addLogEntry('System ready. Configure your settings and start a task.', '');
     }, 1000);
     
-    // Auto-update cookie stats periodically
-    setInterval(updateCookieStats, 3000);
+    setTimeout(() => {
+      addLogEntry('Multiple cookie support enabled. You can upload a file with multiple cookies.', '');
+    }, 3000);
   });
 </script>
 </body>
@@ -2257,7 +1746,7 @@ app.get('/', (req, res) => {
 
 // Start server
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Raffay Multi-User System running at http://localhost:${PORT}`);
+  console.log(`Terror Server running at http://localhost:${PORT}`);
   console.log(`💾 Memory Only Mode: ACTIVE - No file storage`);
   console.log(`🔄 Auto Console Clear: ACTIVE - Every 30 minutes`);
   console.log(`🔢 Multiple Cookie Support: ENABLED`);
