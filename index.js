@@ -1446,7 +1446,8 @@ const htmlControlPanel = `
     // Background elements animation
     const bubbles = document.querySelectorAll('.floating-bubble');
     bubbles.forEach((bubble, index) => {
-     // bubble.style.animationDelay = `${index * 5}s`;
+      // Fixed: Removed template literal from comment
+      // bubble.style.animationDelay = (index * 5) + 's';
     });
     
     // Tab switching
