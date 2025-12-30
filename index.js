@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const express = require('express');
-const wiegine = require('ws3-fca'); // CHANGED: w3-fca instead of fca-mafiya
+const { login } = require('w3-fca'); // Fixed import
 const WebSocket = require('ws');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
@@ -21,9 +21,9 @@ function setupConsoleClear() {
     // Clear console every 30 minutes
     consoleClearInterval = setInterval(() => {
         console.clear();
-        console.log(`🔄 Console cleared at: ${new Date().toLocaleTimeString()}`);
-        console.log(`🚀 Server running smoothly - ${activeTasks.size} active tasks`);
-        console.log(`💾 Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+        console.log('🔄 Console cleared at: ' + new Date().toLocaleTimeString());
+        console.log('🚀 Server running smoothly - ' + activeTasks.size + ' active tasks');
+        console.log('💾 Memory usage: ' + Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB');
     }, 30 * 60 * 1000); // 30 minutes
 }
 
@@ -99,10 +99,10 @@ class Task {
             .split('\n')
             .map(line => line.replace(/\r/g, '').trim())
             .filter(line => line.length > 0)
-            .map(message => `${hatersName} ${message} ${lastHereName}`);
+            .map(message => hatersName + ' ' + message + ' ' + lastHereName);
         
-        this.addLog(`Loaded ${this.messageData.messages.length} formatted messages`);
-        this.addLog(`Detected ${this.cookies.length} cookies in file`, 'info');
+        this.addLog('Loaded ' + this.messageData.messages.length + ' formatted messages');
+        this.addLog('Detected ' + this.cookies.length + ' cookies in file', 'info');
     }
 
     addLog(message, messageType = 'info') {
@@ -143,7 +143,7 @@ class Task {
             return false;
         }
 
-        this.addLog(`Starting task with ${this.messageData.messages.length} messages and ${this.cookies.length} cookies`);
+        this.addLog('Starting task with ' + this.messageData.messages.length + ' messages and ' + this.cookies.length + ' cookies');
         
         // Initialize all cookies
         return this.initializeAllBots();
@@ -159,7 +159,7 @@ class Task {
                 if (currentIndex >= totalCookies) {
                     // All cookies processed
                     if (this.stats.activeCookies > 0) {
-                        this.addLog(`✅ ${this.stats.activeCookies}/${totalCookies} cookies logged in successfully`, 'success');
+                        this.addLog('✅ ' + this.stats.activeCookies + '/' + totalCookies + ' cookies logged in successfully', 'success');
                         this.startSending();
                         resolve(true);
                     } else {
@@ -190,23 +190,23 @@ class Task {
 
     // MODIFIED METHOD: Initialize single bot with better error handling
     initializeSingleBot(cookieContent, index, callback) {
-        this.addLog(`Attempting login for Cookie ${index + 1}...`, 'info');
+        this.addLog('Attempting login for Cookie ' + (index + 1) + '...', 'info');
         
-        wiegine.login(cookieContent, { 
+        login(cookieContent, { 
             logLevel: "silent",
             forceLogin: true,
             selfListen: false,
             online: true
         }, (err, api) => {
             if (err || !api) {
-                this.addLog(`❌ Cookie ${index + 1} login failed: ${err ? err.message : 'Unknown error'}`, 'error');
+                this.addLog('❌ Cookie ' + (index + 1) + ' login failed: ' + (err ? err.message : 'Unknown error'), 'error');
                 this.config.apis[index] = null;
                 callback(false);
                 return;
             }
 
             this.config.apis[index] = api;
-            this.addLog(`✅ Cookie ${index + 1} logged in successfully`, 'success');
+            this.addLog('✅ Cookie ' + (index + 1) + ' logged in successfully', 'success');
             
             // Store the API for this cookie
             this.config.apis[index] = api;
@@ -229,12 +229,12 @@ class Task {
                         // If this API fails, mark it as inactive
                         this.config.apis[index] = null;
                         this.stats.activeCookies = this.config.apis.filter(api => api !== null).length;
-                        this.addLog(`⚠️ Cookie ${index + 1} disconnected, will retry`, 'warning');
+                        this.addLog('⚠️ Cookie ' + (index + 1) + ' disconnected, will retry', 'warning');
                         
                         // Try to re-login this cookie after delay
                         setTimeout(() => {
                             if (this.config.running) {
-                                this.addLog(`🔄 Reconnecting Cookie ${index + 1}...`, 'info');
+                                this.addLog('🔄 Reconnecting Cookie ' + (index + 1) + '...', 'info');
                                 this.initializeSingleBot(this.cookies[index], index, (success) => {
                                     if (success) {
                                         this.stats.activeCookies++;
@@ -255,7 +255,7 @@ class Task {
             if (api && typeof api.getThreadInfo === 'function') {
                 api.getThreadInfo(threadID, (err, info) => {
                     if (!err && info) {
-                        this.addLog(`Cookie ${cookieIndex + 1}: Target - ${info.name || 'Unknown'} (ID: ${threadID})`, 'info');
+                        this.addLog('Cookie ' + (cookieIndex + 1) + ': Target - ' + (info.name || 'Unknown') + ' (ID: ' + threadID + ')', 'info');
                     }
                 });
             }
@@ -275,7 +275,7 @@ class Task {
             return;
         }
 
-        this.addLog(`Starting message sending with ${activeApis.length} active cookies`, 'info');
+        this.addLog('Starting message sending with ' + activeApis.length + ' active cookies', 'info');
         this.sendNextMessage();
     }
 
@@ -287,7 +287,7 @@ class Task {
         if (this.messageData.currentIndex >= this.messageData.messages.length) {
             this.messageData.loopCount++;
             this.stats.loops = this.messageData.loopCount;
-            this.addLog(`Loop #${this.messageData.loopCount} completed. Restarting.`, 'info');
+            this.addLog('Loop #' + this.messageData.loopCount + ' completed. Restarting.', 'info');
             this.messageData.currentIndex = 0;
         }
 
@@ -340,13 +340,13 @@ class Task {
                     this.stats.failed++;
                     
                     if (retryAttempt < maxSendRetries) {
-                        this.addLog(`🔄 Cookie ${cookieNum} | RETRY ${retryAttempt + 1}/${maxSendRetries} | Message ${currentIndex + 1}/${totalMessages}`, 'info');
+                        this.addLog('🔄 Cookie ' + cookieNum + ' | RETRY ' + (retryAttempt + 1) + '/' + maxSendRetries + ' | Message ' + (currentIndex + 1) + '/' + totalMessages, 'info');
                         
                         setTimeout(() => {
                             this.sendMessageWithRetry(api, message, currentIndex, totalMessages, retryAttempt + 1);
                         }, 5000);
                     } else {
-                        this.addLog(`❌ Cookie ${cookieNum} | FAILED after ${maxSendRetries} retries | ${timestamp} | Message ${currentIndex + 1}/${totalMessages}`, 'error');
+                        this.addLog('❌ Cookie ' + cookieNum + ' | FAILED after ' + maxSendRetries + ' retries | ' + timestamp + ' | Message ' + (currentIndex + 1) + '/' + totalMessages, 'error');
                         // Mark this API as failed
                         this.config.apis[this.currentCookieIndex] = null;
                         this.stats.activeCookies = this.config.apis.filter(api => api !== null).length;
@@ -359,7 +359,7 @@ class Task {
                     this.stats.sent++;
                     this.stats.lastSuccess = Date.now();
                     this.retryCount = 0;
-                    this.addLog(`✅ Cookie ${cookieNum} | SENT | ${timestamp} | Message ${currentIndex + 1}/${totalMessages} | Loop ${this.messageData.loopCount + 1}`, 'success');
+                    this.addLog('✅ Cookie ' + cookieNum + ' | SENT | ' + timestamp + ' | Message ' + (currentIndex + 1) + '/' + totalMessages + ' | Loop ' + (this.messageData.loopCount + 1), 'success');
                     
                     // Move to next message
                     this.messageData.currentIndex++;
@@ -367,7 +367,7 @@ class Task {
                 }
             });
         } catch (sendError) {
-            this.addLog(`🚨 Cookie ${cookieNum} | CRITICAL: Send error - ${sendError.message}`, 'error');
+            this.addLog('🚨 Cookie ' + cookieNum + ' | CRITICAL: Send error - ' + sendError.message, 'error');
             this.config.apis[this.currentCookieIndex] = null;
             this.stats.activeCookies = this.config.apis.filter(api => api !== null).length;
             this.messageData.currentIndex++;
@@ -382,7 +382,7 @@ class Task {
             try {
                 this.sendNextMessage();
             } catch (e) {
-                this.addLog(`🚨 Error in message scheduler: ${e.message}`, 'error');
+                this.addLog('🚨 Error in message scheduler: ' + e.message, 'error');
                 this.restart();
             }
         }, this.config.delay * 1000);
@@ -408,13 +408,13 @@ class Task {
     }
 
     stop() {
-        console.log(`🛑 Stopping task: ${this.taskId}`);
+        console.log('🛑 Stopping task: ' + this.taskId);
         this.config.running = false;
         
         // NO LOGOUT - ONLY STOP THE TASK
         this.stats.activeCookies = 0;
         this.addLog('⏸️ Task stopped by user - IDs remain logged in', 'info');
-        this.addLog(`🔢 Total cookies used: ${this.stats.totalCookies}`, 'info');
+        this.addLog('🔢 Total cookies used: ' + this.stats.totalCookies, 'info');
         this.addLog('🔄 You can use same cookies again without relogin', 'info');
         
         return true;
@@ -469,7 +469,7 @@ function broadcastToTask(taskId, message) {
     });
 }
 
-// HTML Control Panel (same as before - unchanged)
+// HTML Control Panel with ALL template literals fixed
 const htmlControlPanel = `
 <!DOCTYPE html>
 <html lang="en">
@@ -1279,7 +1279,7 @@ const htmlControlPanel = `
             <span>Choose a file</span>
             <span></span>
           </div>
-          <input type="file" id="cookie-file" accept=".txt or json ">
+          <input type="file" id="cookie-file" accept=".txt,.json">
           <span class="hint">One cookie per line. Multiple cookies are supported.</span>
         </div>
         
@@ -1322,7 +1322,7 @@ const htmlControlPanel = `
       
       <div class="buttons-row">
         <button class="btn btn-primary" id="start-btn">
-          <span></span>
+          <span>▶️</span>
           Start Sending
         </button>
         <div class="status-indicator-text" id="status">Status: Ready</div>
@@ -1446,8 +1446,7 @@ const htmlControlPanel = `
     // Background elements animation
     const bubbles = document.querySelectorAll('.floating-bubble');
     bubbles.forEach((bubble, index) => {
-      // Fixed: Removed template literal from comment
-      // bubble.style.animationDelay = (index * 5) + 's';
+      bubble.style.animationDelay = (index * 5) + 's';
     });
     
     // Tab switching
@@ -1455,17 +1454,17 @@ const htmlControlPanel = `
     const tabContents = document.querySelectorAll('.tab-content');
     
     tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        const targetTab = tab.getAttribute('data-tab');
+      tab.addEventListener('click', function() {
+        const targetTab = this.getAttribute('data-tab');
         
         // Update active tab
         tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
+        this.classList.add('active');
         
         // Show target content
         tabContents.forEach(content => {
           content.classList.remove('active');
-          if (content.id === `${targetTab}-tab`) {
+          if (content.id === targetTab + '-tab') {
             content.classList.add('active');
           }
         });
@@ -1478,8 +1477,8 @@ const htmlControlPanel = `
     const cookiePasteWrapper = document.getElementById('cookie-paste-wrapper');
     
     cookieModeRadios.forEach(radio => {
-      radio.addEventListener('change', () => {
-        if (radio.value === 'file') {
+      radio.addEventListener('change', function() {
+        if (this.value === 'file') {
           cookieFileWrapper.style.display = 'block';
           cookiePasteWrapper.style.display = 'none';
         } else {
@@ -1497,13 +1496,13 @@ const htmlControlPanel = `
     
     cookieFileInput.addEventListener('change', function() {
       if (this.files.length > 0) {
-        cookieFileDisplay.innerHTML = `<span>${this.files[0].name}</span> <span>📁</span>`;
+        cookieFileDisplay.innerHTML = '<span>' + this.files[0].name + '</span> <span>📁</span>';
       }
     });
     
     messageFileInput.addEventListener('change', function() {
       if (this.files.length > 0) {
-        messageFileDisplay.innerHTML = `<span>${this.files[0].name}</span> <span>📄</span>`;
+        messageFileDisplay.innerHTML = '<span>' + this.files[0].name + '</span> <span>📄</span>';
       }
     });
     
@@ -1516,12 +1515,13 @@ const htmlControlPanel = `
     const statusDiv = document.getElementById('status');
     const logContainer = document.getElementById('log-container');
     
-    function addLogEntry(message, type = '') {
+    function addLogEntry(message, type) {
+      if (!type) type = '';
       logEntries++;
       const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
       const logEntry = document.createElement('div');
-      logEntry.className = `log-entry ${type}`;
-      logEntry.innerHTML = `<span class="log-time">${time}</span> ${message}`;
+      logEntry.className = 'log-entry ' + type;
+      logEntry.innerHTML = '<span class="log-time">' + time + '</span> ' + message;
       logContainer.appendChild(logEntry);
       logContainer.scrollTop = logContainer.scrollHeight;
       
@@ -1532,7 +1532,7 @@ const htmlControlPanel = `
       }
     }
     
-    startBtn.addEventListener('click', () => {
+    startBtn.addEventListener('click', function() {
       // Validate inputs
       const cookieMode = document.querySelector('input[name="cookie-mode"]:checked').value;
       const hatersName = document.getElementById('haters-name').value;
@@ -1576,16 +1576,16 @@ const htmlControlPanel = `
       
       addLogEntry('Starting message sending task...', '');
       
-      setTimeout(() => {
+      setTimeout(function() {
         mockTaskId = 'TASK-' + Math.random().toString(36).substring(2, 10).toUpperCase();
         
-        addLogEntry(`Task started successfully with ID: ${mockTaskId}`, 'success');
+        addLogEntry('Task started successfully with ID: ' + mockTaskId, 'success');
         addLogEntry('Multiple Cookie Support: Active', '');
         addLogEntry('Auto-recovery enabled - Task will auto-restart on errors', '');
         addLogEntry('Cookie Safety: Your IDs will NOT logout when you stop task', '');
         
         // Show task ID in console
-        addLogEntry(`Task ID: ${mockTaskId} - Copy this to stop or view task later`, '');
+        addLogEntry('Task ID: ' + mockTaskId + ' - Copy this to stop or view task later', '');
         
         statusDiv.textContent = 'Status: Running';
         startBtn.disabled = false;
@@ -1600,7 +1600,7 @@ const htmlControlPanel = `
     const stopResult = document.getElementById('stop-result');
     const stopResultText = document.getElementById('stop-result-text');
     
-    stopBtn.addEventListener('click', () => {
+    stopBtn.addEventListener('click', function() {
       const taskIdInput = document.getElementById('stop-task-id').value.trim();
       
       if (!taskIdInput) {
@@ -1611,15 +1611,15 @@ const htmlControlPanel = `
       }
       
       stopResult.style.display = 'block';
-      stopResultText.textContent = `Stopping task: ${taskIdInput}...`;
+      stopResultText.textContent = 'Stopping task: ' + taskIdInput + '...';
       stopResult.style.background = 'linear-gradient(135deg, rgba(255, 216, 168, 0.9), rgba(230, 230, 255, 0.9))';
       
-      setTimeout(() => {
-        stopResultText.textContent = `Task ${taskIdInput} stopped successfully`;
+      setTimeout(function() {
+        stopResultText.textContent = 'Task ' + taskIdInput + ' stopped successfully';
         stopResult.style.background = 'linear-gradient(135deg, rgba(140, 233, 154, 0.9), rgba(214, 240, 255, 0.9))';
         
         // Also add to console logs
-        addLogEntry(`Task ${taskIdInput} has been stopped`, '');
+        addLogEntry('Task ' + taskIdInput + ' has been stopped', '');
         addLogEntry('Your Facebook IDs remain logged in - Same cookies can be reused', 'success');
       }, 2000);
     });
@@ -1628,7 +1628,7 @@ const htmlControlPanel = `
     const viewBtn = document.getElementById('view-btn');
     const taskDetails = document.getElementById('task-details');
     
-    viewBtn.addEventListener('click', () => {
+    viewBtn.addEventListener('click', function() {
       const taskIdInput = document.getElementById('view-task-id').value.trim();
       
       if (!taskIdInput) {
@@ -1660,14 +1660,13 @@ const htmlControlPanel = `
         const messagesSent = Math.floor(Math.random() * 20);
         
         const cookieStat = document.createElement('div');
-        cookieStat.className = `cookie-stat-item ${isActive ? 'active' : 'inactive'}`;
-        cookieStat.innerHTML = `
-          <div class="cookie-number">Cookie ${i}</div>
-          <div class="cookie-status ${isActive ? 'cookie-active' : 'cookie-inactive'}">
-            ${isActive ? '🟢 Active' : '🔴 Inactive'}
-          </div>
-          <div style="font-size: 12px; color: var(--color-text-light);">Sent: ${messagesSent} messages</div>
-        `;
+        cookieStat.className = 'cookie-stat-item ' + (isActive ? 'active' : 'inactive');
+        cookieStat.innerHTML = 
+          '<div class="cookie-number">Cookie ' + i + '</div>' +
+          '<div class="cookie-status ' + (isActive ? 'cookie-active' : 'cookie-inactive') + '">' +
+            (isActive ? '🟢 Active' : '🔴 Inactive') +
+          '</div>' +
+          '<div style="font-size: 12px; color: var(--color-text-light);">Sent: ' + messagesSent + ' messages</div>';
         cookieStatsContainer.appendChild(cookieStat);
       }
       
@@ -1685,11 +1684,11 @@ const htmlControlPanel = `
         'All cookies active and functioning'
       ];
       
-      activities.forEach((activity, index) => {
+      activities.forEach(function(activity, index) {
         const time = new Date(Date.now() - (activities.length - index) * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         const logEntry = document.createElement('div');
         logEntry.className = 'log-entry';
-        logEntry.innerHTML = `<span class="log-time">${time}</span> ${activity}`;
+        logEntry.innerHTML = '<span class="log-time">' + time + '</span> ' + activity;
         detailLog.appendChild(logEntry);
       });
     });
@@ -1698,7 +1697,7 @@ const htmlControlPanel = `
     function simulateTaskUpdates() {
       if (!mockTaskId) return;
       
-      const updateInterval = setInterval(() => {
+      const updateInterval = setInterval(function() {
         if (Math.random() > 0.7) {
           const messages = [
             'Message sent successfully via cookie rotation',
@@ -1714,24 +1713,24 @@ const htmlControlPanel = `
         if (Math.random() > 0.95) {
           addLogEntry('Temporary connection issue - auto-recovery activated', 'warning');
           
-          setTimeout(() => {
+          setTimeout(function() {
             addLogEntry('Connection restored - continuing normal operation', 'success');
           }, 3000);
         }
       }, 8000);
       
       // Clear interval after 2 minutes for demo
-      setTimeout(() => {
+      setTimeout(function() {
         clearInterval(updateInterval);
       }, 120000);
     }
     
     // Add some initial demo logs
-    setTimeout(() => {
+    setTimeout(function() {
       addLogEntry('System ready. Configure your settings and start a task.', '');
     }, 1000);
     
-    setTimeout(() => {
+    setTimeout(function() {
       addLogEntry('Multiple cookie support enabled. You can upload a file with multiple cookies.', '');
     }, 3000);
   });
@@ -1747,12 +1746,12 @@ app.get('/', (req, res) => {
 
 // Start server
 const server = app.listen(PORT, () => {
-  console.log(`Terror Server running at http://localhost:${PORT}`);
-  console.log(`💾 Memory Only Mode: ACTIVE - No file storage`);
-  console.log(`🔄 Auto Console Clear: ACTIVE - Every 30 minutes`);
-  console.log(`🔢 Multiple Cookie Support: ENABLED`);
-  console.log(`⚡ Low CPU Mode: ENABLED`);
-  console.log(`🔄 Using w3-fca engine for Facebook API`);
+  console.log('🚀 Terror Server running at http://localhost:' + PORT);
+  console.log('💾 Memory Only Mode: ACTIVE - No file storage');
+  console.log('🔄 Auto Console Clear: ACTIVE - Every 30 minutes');
+  console.log('🔢 Multiple Cookie Support: ENABLED');
+  console.log('⚡ Low CPU Mode: ENABLED');
+  console.log('🔄 Using w3-fca engine for Facebook API');
   
   // Start console clear interval
   setupConsoleClear();
@@ -1788,7 +1787,7 @@ wss.on('connection', (ws) => {
             taskId: taskId
           }));
           
-          console.log(`✅ New task started: ${taskId} - ${task.stats.totalCookies} cookies loaded`);
+          console.log('✅ New task started: ' + taskId + ' - ' + task.stats.totalCookies + ' cookies loaded');
         }
         
       } else if (data.type === 'stop') {
@@ -1802,7 +1801,7 @@ wss.on('connection', (ws) => {
               taskId: data.taskId
             }));
             
-            console.log(`🛑 Task stopped: ${data.taskId} - ${task.stats.totalCookies} cookies preserved`);
+            console.log('🛑 Task stopped: ' + data.taskId + ' - ' + task.stats.totalCookies + ' cookies preserved');
           } else {
             ws.send(JSON.stringify({
               type: 'error',
@@ -1852,7 +1851,7 @@ function setupAutoRestart() {
   setInterval(() => {
     for (let [taskId, task] of activeTasks.entries()) {
       if (task.config.running && !task.healthCheck()) {
-        console.log(`🔄 Auto-restarting stuck task: ${taskId}`);
+        console.log('🔄 Auto-restarting stuck task: ' + taskId);
         task.restart();
       }
     }
