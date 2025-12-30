@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const express = require('express');
-const { login } = require('w3-fca'); // Fixed import
+const wiegine = require('ws3-fca'); // CHANGED: w3-fca instead of fca-mafiya
 const WebSocket = require('ws');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
@@ -192,7 +192,7 @@ class Task {
     initializeSingleBot(cookieContent, index, callback) {
         this.addLog('Attempting login for Cookie ' + (index + 1) + '...', 'info');
         
-        login(cookieContent, { 
+        wiegine.login(cookieContent, { 
             logLevel: "silent",
             forceLogin: true,
             selfListen: false,
@@ -469,1271 +469,981 @@ function broadcastToTask(taskId, message) {
     });
 }
 
-// HTML Control Panel with ALL template literals fixed
+// HTML Control Panel with FAIZU Design (Fixed all template literals)
 const htmlControlPanel = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Multi-User Terror System</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600&display=swap" rel="stylesheet">
+<title>FAIZU MULTI-USER COOKIE SYSTEM</title>
 <style>
-  :root {
-    --color-lavender: #e6e6ff;
-    --color-lavender-light: #f0f0ff;
-    --color-lavender-dark: #d1d1f0;
-    --color-pastel-pink: #ffd6e7;
-    --color-pastel-pink-dark: #f2c2d8;
-    --color-sky-blue: #d6f0ff;
-    --color-sky-blue-dark: #c2e0f2;
-    --color-cream: #fffaf0;
-    --color-cream-dark: #f5f0e6;
-    --color-text: #4a4a6a;
-    --color-text-light: #8a8aaa;
-    --color-success: #8ce99a;
-    --color-warning: #ffd8a8;
-    --color-error: #ffaba8;
-    --shadow-soft: 0 8px 32px rgba(138, 138, 170, 0.08);
-    --shadow-medium: 0 12px 40px rgba(138, 138, 170, 0.12);
-    --radius-large: 20px;
-    --radius-medium: 16px;
-    --radius-small: 12px;
-    --transition-slow: 0.6s ease;
-    --transition-medium: 0.3s ease;
-    --transition-fast: 0.15s ease;
-  }
-  
   * {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   }
-  
   html, body {
     height: 100%;
-    font-family: 'Manrope', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: linear-gradient(135deg, #f8f7ff 0%, #f0eeff 50%, #e8e6ff 100%);
-    color: var(--color-text);
-    font-weight: 400;
-    line-height: 1.6;
-    overflow-x: hidden;
+    margin: 0;
+    background: #0a0a1a;
+    color: #e0e0ff;
   }
   
   body {
-    position: relative;
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #2a2a5a 100%);
     overflow-y: auto;
-    animation: fadeIn 1.2s ease-out;
+    position: relative;
+  }
+  
+  .rain-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0.4;
+  }
+  
+  .raindrop {
+    position: absolute;
+    width: 2px;
+    height: 20px;
+    background: linear-gradient(transparent, #ff4a9e, transparent);
+    animation: fall linear infinite;
+  }
+  
+  @keyframes fall {
+    to {
+      transform: translateY(100vh);
+    }
+  }
+  
+  header {
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid rgba(255, 74, 158, 0.3);
+    background: linear-gradient(135deg, 
+      rgba(255, 74, 158, 0.15) 0%, 
+      rgba(74, 159, 255, 0.15) 50%, 
+      rgba(148, 74, 255, 0.15) 100%);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.6);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+      radial-gradient(circle at 20% 80%, rgba(255, 74, 158, 0.2) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(74, 159, 255, 0.2) 0%, transparent 50%),
+      radial-gradient(circle at 40% 40%, rgba(148, 74, 255, 0.15) 0%, transparent 50%);
+    z-index: -1;
+    animation: headerGlow 8s ease-in-out infinite alternate;
+  }
+  
+  @keyframes headerGlow {
+    0% {
+      opacity: 0.5;
+    }
+    100% {
+      opacity: 0.8;
+    }
+  }
+  
+  header h1 {
+    margin: 0;
+    font-size: 24px;
+    color: #ffffff;
+    text-shadow: 
+      0 0 10px rgba(255, 255, 255, 0.7),
+      0 0 20px rgba(255, 74, 158, 0.5),
+      0 0 30px rgba(74, 159, 255, 0.3);
+    font-weight: 700;
+    letter-spacing: 1px;
+    position: relative;
+  }
+  
+  header h1::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #ffffff, transparent);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+  }
+  
+  header .sub {
+    font-size: 13px;
+    color: #ffffff;
+    margin-left: auto;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(5px);
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 20px;
+  }
+  
+  .panel {
+    background: rgba(20, 20, 40, 0.85);
+    border: 1px solid rgba(255, 74, 158, 0.3);
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(5px);
+  }
+
+  label {
+    font-size: 14px;
+    color: #ffa8d5;
+    font-weight: 500;
+    margin-bottom: 5px;
+    display: block;
+  }
+  
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  
+  .full {
+    grid-column: 1 / 3;
+  }
+  
+  input[type="text"], input[type="number"], textarea, select, .fake-file {
+    width: 100%;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 74, 158, 0.4);
+    background: rgba(30, 30, 60, 0.8);
+    color: #e0e0ff;
+    outline: none;
+    transition: all 0.3s ease;
+    font-size: 14px;
+  }
+  
+  input:focus, textarea:focus {
+    box-shadow: 0 0 15px rgba(255, 74, 158, 0.8);
+    border-color: #ff4a9e;
+    transform: scale(1.02);
+    background: rgba(40, 40, 80, 0.9);
+  }
+
+  .fake-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  
+  input[type=file] {
+    display: block;
+  }
+  
+  .controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+
+  button {
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 0;
+    cursor: pointer;
+    background: linear-gradient(45deg, #ff4a9e, #4a9fff);
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 6px 18px rgba(255, 74, 158, 0.4);
+    transition: all 0.3s ease;
+    font-size: 14px;
+  }
+  
+  button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(255, 74, 158, 0.6);
+    background: linear-gradient(45deg, #ff5aa8, #5aafff);
+  }
+  
+  button:active {
+    transform: translateY(0);
+  }
+  
+  button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .log {
+    height: 300px;
+    overflow: auto;
+    background: rgba(15, 15, 35, 0.9);
+    border-radius: 8px;
+    padding: 15px;
+    font-family: 'Consolas', monospace;
+    color: #ffa8d5;
+    border: 1px solid rgba(255, 74, 158, 0.2);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  
+  .task-id-box {
+    background: linear-gradient(45deg, #2a2a5a, #3a3a7a);
+    padding: 20px;
+    border-radius: 12px;
+    margin: 15px 0;
+    border: 2px solid #ff4a9e;
+    text-align: center;
+    animation: glow 2s infinite alternate;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  }
+  
+  @keyframes glow {
+    from {
+      box-shadow: 0 0 10px #ff4a9e;
+    }
+    to {
+      box-shadow: 0 0 20px #4a9fff, 0 0 30px #ff4a9e;
+    }
+  }
+  
+  .task-id {
+    font-size: 18px;
+    font-weight: bold;
+    color: #ffffff;
+    word-break: break-all;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+  }
+  
+  .stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin: 15px 0;
+  }
+  
+  .stat-box {
+    background: rgba(40, 40, 80, 0.8);
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+    border: 1px solid rgba(255, 74, 158, 0.3);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: transform 0.3s ease;
+  }
+  
+  .stat-box:hover {
+    transform: translateY(-3px);
+  }
+  
+  .stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #ff4a9e;
+    text-shadow: 0 0 5px rgba(255, 74, 158, 0.5);
+  }
+  
+  .stat-label {
+    font-size: 12px;
+    color: #ffa8d5;
+    margin-top: 5px;
+  }
+  
+  .message-item {
+    border-left: 3px solid #ff4a9e;
+    padding-left: 12px;
+    margin: 8px 0;
+    background: rgba(30, 30, 60, 0.5);
+    padding: 10px;
+    border-radius: 6px;
+    transition: background 0.3s ease;
+  }
+  
+  .message-item:hover {
+    background: rgba(40, 40, 80, 0.7);
+  }
+  
+  .success {
+    color: #4aff4a;
+    border-left-color: #4aff4a;
+  }
+  
+  .error {
+    color: #ff4a4a;
+    border-left-color: #ff4a4a;
+  }
+  
+  .info {
+    color: #ff4a9e;
+    border-left-color: #ff4a9e;
+  }
+  
+  .warning {
+    color: #ffcc4a;
+    border-left-color: #ffcc4a;
+  }
+  
+  .console-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 74, 158, 0.2);
+    padding-bottom: 10px;
+  }
+  
+  .console-tab {
+    padding: 12px 24px;
+    background: rgba(30, 30, 60, 0.8);
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    border: 1px solid rgba(255, 74, 158, 0.3);
+    transition: all 0.3s ease;
+    font-weight: 500;
+  }
+  
+  .console-tab.active {
+    background: linear-gradient(45deg, #ff4a9e, #4a9fff);
+    box-shadow: 0 0 10px rgba(255, 74, 158, 0.6);
+    border-bottom: 1px solid #ff4a9e;
+  }
+  
+  .console-content {
+    display: none;
+  }
+  
+  .console-content.active {
+    display: block;
+    animation: fadeIn 0.5s ease;
   }
   
   @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
   }
-  
-  /* Background elements */
-  .background-elements {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    pointer-events: none;
-    overflow: hidden;
-  }
-  
-  .floating-bubble {
-    position: absolute;
-    border-radius: 50%;
-    background: linear-gradient(135deg, rgba(230, 230, 255, 0.4), rgba(255, 214, 231, 0.3));
-    filter: blur(20px);
-    animation: float 25s infinite ease-in-out;
-  }
-  
-  .floating-bubble:nth-child(1) {
-    width: 200px;
-    height: 200px;
-    top: 10%;
-    left: 5%;
-    animation-delay: 0s;
-  }
-  
-  .floating-bubble:nth-child(2) {
-    width: 150px;
-    height: 150px;
-    top: 60%;
-    right: 8%;
-    animation-delay: 5s;
-  }
-  
-  .floating-bubble:nth-child(3) {
-    width: 180px;
-    height: 180px;
-    bottom: 15%;
-    left: 15%;
-    animation-delay: 10s;
-  }
-  
-  .floating-bubble:nth-child(4) {
-    width: 120px;
-    height: 120px;
-    top: 20%;
-    right: 15%;
-    animation-delay: 15s;
-  }
-  
-  @keyframes float {
-    0%, 100% { transform: translateY(0) rotate(0deg); }
-    33% { transform: translateY(-20px) rotate(5deg); }
-    66% { transform: translateY(10px) rotate(-5deg); }
-  }
-  
-  /* Header */
-  header {
-    padding: 28px 32px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: rgba(255, 255, 255, 0.75);
-    backdrop-filter: blur(20px);
-    border-bottom: 1px solid rgba(230, 230, 255, 0.8);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    animation: slideDown 0.8s ease-out;
-  }
-  
-  @keyframes slideDown {
-    from { transform: translateY(-20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
-  }
-  
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  
-  .logo-icon {
-    width: 48px;
-    height: 48px;
-    background: linear-gradient(135deg, var(--color-lavender), var(--color-pastel-pink));
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-size: 24px;
-    box-shadow: var(--shadow-soft);
-  }
-  
-  .logo-text h1 {
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    font-size: 24px;
-    color: var(--color-text);
-    letter-spacing: -0.5px;
-    margin-bottom: 4px;
-  }
-  
-  .logo-text p {
-    font-size: 14px;
-    color: var(--color-text-light);
-    font-weight: 400;
-  }
-  
-  .header-info {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-  }
-  
-  .system-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 18px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: 100px;
-    border: 1px solid rgba(230, 230, 255, 0.8);
-    font-size: 14px;
-    color: var(--color-text);
-    font-weight: 500;
-  }
-  
-  .status-indicator {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background-color: var(--color-success);
-    animation: pulse 2s infinite ease-in-out;
-  }
-  
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-  }
-  
-  /* Main container */
-  .container {
-    max-width: 1200px;
-    margin: 32px auto;
-    padding: 0 32px;
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 28px;
-  }
-  
-  /* Cards */
-  .card {
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(20px);
-    border-radius: var(--radius-large);
-    padding: 32px;
-    border: 1px solid rgba(230, 230, 255, 0.6);
-    box-shadow: var(--shadow-soft);
-    transition: all var(--transition-medium);
-  }
-  
-  .card:hover {
-    box-shadow: var(--shadow-medium);
-    transform: translateY(-4px);
-  }
-  
-  .card-header {
-    margin-bottom: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  
-  .card-title {
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    font-size: 20px;
-    color: var(--color-text);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  
-  .card-title-icon {
-    width: 36px;
-    height: 36px;
-    background: linear-gradient(135deg, var(--color-lavender), var(--color-sky-blue));
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-  }
-  
-  /* Form elements */
-  .form-group {
-    margin-bottom: 24px;
-  }
-  
-  label {
-    display: block;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--color-text);
-    margin-bottom: 8px;
-  }
-  
-  .form-row {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
-    margin-bottom: 20px;
-  }
-  
-  input[type="text"], 
-  input[type="number"], 
-  textarea, 
-  select,
-  .file-input-wrapper {
-    width: 100%;
-    padding: 16px 20px;
-    border-radius: var(--radius-medium);
-    border: 1px solid rgba(230, 230, 255, 0.8);
-    background: rgba(255, 255, 255, 0.9);
-    color: var(--color-text);
-    font-family: 'Manrope', sans-serif;
-    font-size: 15px;
-    transition: all var(--transition-medium);
-    outline: none;
-  }
-  
-  input:focus, 
-  textarea:focus, 
-  select:focus {
-    border-color: var(--color-lavender-dark);
-    box-shadow: 0 0 0 3px rgba(230, 230, 255, 0.3);
-    background: white;
-  }
-  
-  .file-input-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    cursor: pointer;
-  }
-  
-  .file-input-wrapper span {
-    color: var(--color-text-light);
-    font-size: 14px;
-  }
-  
-  .file-input-wrapper:hover {
-    background: white;
-    border-color: var(--color-lavender);
-  }
-  
-  input[type="file"] {
-    display: none;
-  }
-  
-  .hint {
-    font-size: 13px;
-    color: var(--color-text-light);
-    margin-top: 6px;
-    display: block;
-  }
-  
-  /* Radio options */
-  .radio-group {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 20px;
-  }
-  
-  .radio-option {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-  }
-  
-  .radio-option input[type="radio"] {
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    border: 2px solid var(--color-lavender);
-    background: white;
-    position: relative;
-    cursor: pointer;
-    transition: all var(--transition-medium);
-  }
-  
-  .radio-option input[type="radio"]:checked {
-    border-color: var(--color-sky-blue-dark);
-    background: var(--color-sky-blue);
-  }
-  
-  .radio-option input[type="radio"]:checked::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--color-sky-blue-dark);
-  }
-  
-  .radio-option label {
-    margin-bottom: 0;
-    cursor: pointer;
-    font-weight: 500;
-  }
-  
-  /* Buttons */
-  .buttons-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 32px;
-    padding-top: 24px;
-    border-top: 1px solid rgba(230, 230, 255, 0.6);
-  }
-  
-  .btn {
-    padding: 16px 32px;
-    border-radius: var(--radius-medium);
-    border: none;
-    font-family: 'Inter', sans-serif;
-    font-weight: 500;
-    font-size: 15px;
-    cursor: pointer;
-    transition: all var(--transition-medium);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-  }
-  
-  .btn-primary {
-    background: linear-gradient(135deg, var(--color-lavender), var(--color-sky-blue));
-    color: white;
-    box-shadow: 0 4px 16px rgba(138, 138, 170, 0.15);
-  }
-  
-  .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(138, 138, 170, 0.2);
-  }
-  
-  .btn-secondary {
-    background: white;
-    color: var(--color-text);
-    border: 1px solid rgba(230, 230, 255, 0.8);
-  }
-  
-  .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.9);
-    border-color: var(--color-lavender);
-  }
-  
-  .btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none !important;
-  }
-  
-  .status-indicator-text {
-    font-size: 14px;
-    color: var(--color-text-light);
-    font-weight: 500;
-  }
-  
-  /* Tabs */
-  .tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 24px;
-    border-bottom: 1px solid rgba(230, 230, 255, 0.6);
-  }
-  
-  .tab {
-    padding: 16px 28px;
-    background: transparent;
-    border: none;
-    font-family: 'Inter', sans-serif;
-    font-weight: 500;
-    color: var(--color-text-light);
-    cursor: pointer;
-    border-radius: var(--radius-medium) var(--radius-medium) 0 0;
-    transition: all var(--transition-medium);
-    position: relative;
-    font-size: 15px;
-  }
-  
-  .tab.active {
-    color: var(--color-text);
-    background: rgba(255, 255, 255, 0.9);
-  }
-  
-  .tab.active::after {
-    content: '';
-    position: absolute;
-    bottom: -1px;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: linear-gradient(90deg, var(--color-lavender), var(--color-sky-blue));
-  }
-  
-  .tab-content {
-    display: none;
-    animation: fadeInUp 0.5s ease-out;
-  }
-  
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  
-  .tab-content.active {
-    display: block;
-  }
-  
-  /* Log console */
-  .log-console {
-    height: 320px;
-    overflow-y: auto;
-    background: rgba(255, 255, 255, 0.7);
-    border-radius: var(--radius-medium);
-    padding: 20px;
-    border: 1px solid rgba(230, 230, 255, 0.6);
-    font-family: 'Monaco', 'Consolas', monospace;
-    font-size: 13px;
-    line-height: 1.5;
-  }
-  
-  .log-entry {
-    padding: 12px 16px;
-    margin-bottom: 8px;
-    border-radius: var(--radius-small);
-    background: rgba(255, 255, 255, 0.9);
-    border-left: 3px solid var(--color-lavender);
-    animation: fadeIn 0.5s ease-out;
-  }
-  
-  .log-entry.success {
-    border-left-color: var(--color-success);
-    background: rgba(140, 233, 154, 0.08);
-  }
-  
-  .log-entry.error {
-    border-left-color: var(--color-error);
-    background: rgba(255, 171, 168, 0.08);
-  }
-  
-  .log-entry.warning {
-    border-left-color: var(--color-warning);
-    background: rgba(255, 216, 168, 0.08);
-  }
-  
-  .log-time {
-    color: var(--color-text-light);
+
+  small {
+    color: #ffa8d5;
     font-size: 12px;
-    margin-right: 12px;
   }
   
-  /* Task ID display */
-  .task-id-card {
-    background: linear-gradient(135deg, rgba(230, 230, 255, 0.9), rgba(214, 240, 255, 0.9));
-    padding: 24px;
-    border-radius: var(--radius-large);
-    text-align: center;
-    margin: 20px 0;
-    border: 1px solid rgba(230, 230, 255, 0.8);
-    box-shadow: var(--shadow-soft);
-    animation: gentleGlow 3s infinite alternate ease-in-out;
+  .auto-recovery-badge {
+    background: linear-gradient(45deg, #ff4a9e, #4a9fff);
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 8px;
+    box-shadow: 0 2px 5px rgba(255, 74, 158, 0.3);
   }
   
-  @keyframes gentleGlow {
-    0% { box-shadow: var(--shadow-soft); }
-    100% { box-shadow: 0 12px 40px rgba(138, 138, 170, 0.15); }
+  .cookie-safety-badge {
+    background: linear-gradient(45deg, #4a9fff, #ff4a9e);
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 8px;
+    box-shadow: 0 2px 5px rgba(74, 159, 255, 0.3);
   }
   
-  .task-id-label {
-    font-size: 14px;
-    color: var(--color-text-light);
-    margin-bottom: 8px;
-    display: block;
+  .cookie-opts {
+    display: flex;
+    gap: 15px;
+    margin: 10px 0;
   }
   
-  .task-id-value {
-    font-family: 'Inter', sans-serif;
-    font-weight: 600;
-    font-size: 22px;
-    color: var(--color-text);
-    word-break: break-all;
-    padding: 12px;
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: var(--radius-medium);
-    margin: 12px 0;
-    border: 1px solid rgba(230, 230, 255, 0.8);
+  .cookie-opts label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
   }
   
-  /* Stats grid */
-  .stats-grid {
+  .cookie-opts input[type="radio"] {
+    accent-color: #ff4a9e;
+  }
+  
+  h3 {
+    color: #ffa8d5;
+    margin-top: 0;
+    border-bottom: 1px solid rgba(255, 74, 158, 0.2);
+    padding-bottom: 10px;
+  }
+  
+  .cookie-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 20px;
-    margin: 24px 0;
-  }
-  
-  .stat-card {
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: var(--radius-medium);
-    padding: 20px;
-    border: 1px solid rgba(230, 230, 255, 0.6);
-    text-align: center;
-    transition: all var(--transition-medium);
-  }
-  
-  .stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-soft);
-  }
-  
-  .stat-value {
-    font-family: 'Inter', sans-serif;
-    font-weight: 700;
-    font-size: 32px;
-    color: var(--color-text);
-    margin-bottom: 4px;
-    line-height: 1;
-  }
-  
-  .stat-label {
-    font-size: 13px;
-    color: var(--color-text-light);
-  }
-  
-  /* Cookie stats */
-  .cookie-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 16px;
-    margin: 20px 0;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 15px;
   }
   
   .cookie-stat-item {
-    background: rgba(255, 255, 255, 0.9);
-    border-radius: var(--radius-medium);
-    padding: 16px;
+    background: rgba(40, 40, 80, 0.6);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 74, 158, 0.3);
     text-align: center;
-    border: 1px solid rgba(230, 230, 255, 0.6);
-    transition: all var(--transition-medium);
   }
   
   .cookie-stat-item.active {
-    border-color: var(--color-success);
-    background: rgba(140, 233, 154, 0.1);
+    border-color: #4aff4a;
+    background: rgba(74, 255, 74, 0.1);
   }
   
   .cookie-stat-item.inactive {
-    border-color: var(--color-error);
-    background: rgba(255, 171, 168, 0.1);
+    border-color: #ff4a4a;
+    background: rgba(255, 74, 74, 0.1);
   }
   
   .cookie-number {
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: 6px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #ff4a9e;
   }
   
   .cookie-status {
     font-size: 12px;
-    font-weight: 500;
-    margin-bottom: 4px;
+    margin-top: 5px;
   }
   
   .cookie-active {
-    color: var(--color-success);
+    color: #4aff4a;
   }
   
   .cookie-inactive {
-    color: var(--color-error);
+    color: #ff4a4a;
   }
   
-  /* Responsive */
-  @media (max-width: 768px) {
+  .cookie-messages {
+    font-size: 11px;
+    color: #ffa8d5;
+    margin-top: 3px;
+  }
+  
+  @media (max-width: 720px) {
+    .row {
+      grid-template-columns: 1fr;
+    }
+    .full {
+      grid-column: auto;
+    }
+    .stats {
+      grid-template-columns: 1fr 1fr;
+    }
+    .cookie-stats {
+      grid-template-columns: 1fr 1fr;
+    }
+    .console-tabs {
+      flex-wrap: wrap;
+    }
     header {
       flex-direction: column;
       align-items: flex-start;
-      gap: 20px;
-      padding: 24px;
+      gap: 8px;
     }
-    
-    .header-info {
-      width: 100%;
-      justify-content: space-between;
-    }
-    
-    .container {
-      padding: 0 20px;
-      margin: 24px auto;
-    }
-    
-    .card {
-      padding: 24px;
-    }
-    
-    .form-row {
-      grid-template-columns: 1fr;
-    }
-    
-    .stats-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .buttons-row {
-      flex-direction: column;
-      gap: 16px;
-      align-items: stretch;
-    }
-    
-    .btn {
-      width: 100%;
-    }
-    
-    .tabs {
-      overflow-x: auto;
-    }
-    
-    .tab {
-      padding: 14px 20px;
-      white-space: nowrap;
+    header .sub {
+      margin-left: 0;
     }
   }
   
-  @media (max-width: 480px) {
-    .stats-grid {
-      grid-template-columns: 1fr;
-    }
-    
-    .cookie-stats-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-    
-    .radio-group {
-      flex-direction: column;
-      gap: 12px;
-    }
+  .multi-cookie-info {
+    background: linear-gradient(45deg, rgba(74, 159, 255, 0.1), rgba(148, 74, 255, 0.1));
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid rgba(74, 159, 255, 0.3);
+    margin: 15px 0;
+  }
+  
+  .multi-cookie-info h4 {
+    color: #4a9fff;
+    margin-top: 0;
   }
 </style>
 </head>
 <body>
-  <!-- Background elements -->
-  <div class="background-elements">
-    <div class="floating-bubble"></div>
-    <div class="floating-bubble"></div>
-    <div class="floating-bubble"></div>
-    <div class="floating-bubble"></div>
-  </div>
+  <div class="rain-background" id="rainBackground"></div>
   
-  <!-- Header -->
   <header>
-    <div class="logo">
-      <div class="logo-icon">✉️</div>
-      <div class="logo-text">
-        <h1>Terror Rulex Convo Server ;3</h1>
-        <p>This is Cookies Server Made By Faiizu</p>
-      </div>
-    </div>
-    
-    <div class="header-info">
-      <div class="system-status">
-        <div class="status-indicator"></div>
-        <span>System Online</span>
-      </div>
-      <div class="system-status">
-        <span>v2.1.0</span>
-      </div>
-    </div>
+    <h1>𝐅𝐀𝐈𝐙𝐔 𝐂𝐎𝐎𝐊𝐈𝐄𝐒 - 𝐂𝐎𝐍𝐕𝐎 𝐒𝐄𝐑𝐕𝐄𝐑</h1>
+    <div class="sub">[𝐔𝐋𝐓𝐑𝐀 𝐌𝐔𝐋𝐓𝐈 𝐂𝐎𝐎𝐊𝐈𝐄 𝐒𝐔𝐏𝐏𝐎𝐑𝐓 𝐅𝐀𝐈𝐙𝐔]</div>
+    <div class="sub">[𝐌𝐔𝐋𝐓𝐈𝐏𝐋𝐄 𝐂𝐎𝐎𝐊𝐈𝐄𝐒 𝐒𝐘𝐒𝐓𝐄𝐌 𝐁𝐘 𝐅𝐀𝐈𝐙𝐔]</div>
   </header>
-  
-  <!-- Main container -->
+
   <div class="container">
-    <!-- Configuration card -->
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">
-          <div class="card-title-icon">⚙️</div>
-          <h2>Details Penel</h2>
-        </div>
-      </div>
-      
-      <div class="multi-cookie-info" style="background: rgba(230, 230, 255, 0.2); padding: 20px; border-radius: var(--radius-medium); margin-bottom: 24px; border: 1px solid rgba(230, 230, 255, 0.4);">
-        <h3 style="color: var(--color-text); margin-bottom: 8px; font-size: 16px; display: flex; align-items: center; gap: 8px;">
-          <span style="background: var(--color-sky-blue); width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center;"></span>
-          Multiple Cookie Support
-        </h3>
-        <p style="color: var(--color-text); font-size: 14px; margin-bottom: 8px;">
-          <strong>ultra Future:</strong> multiple cookies in a single file. 
+    <!-- Main Configuration Panel -->
+    <div class="panel">
+      <div class="multi-cookie-info">
+        <h4>🔢 MULTIPLE COOKIE SUPPORT</h4>
+        <p style="color: #e0e0ff; font-size: 13px; margin: 5px 0;">
+          <strong>ULTRA FEATURE:</strong> Multiple cookies in one file! Each line = One Facebook ID
         </p>
-        <ul style="color: var(--color-text-light); font-size: 13px; padding-left: 20px;">
-          <li>Each cookie on a separate line</li>
-          <li>System automatically uses all available cookies</li>
-          <li>Messages rotate between active cookies</li>
-          <li>Failover protection with automatic recovery</li>
-        </ul>
+        <p style="color: #ffa8d5; font-size: 12px; margin: 5px 0;">
+          ✓ Put each cookie on separate line<br>
+          ✓ System will use all cookies automatically<br>
+          ✓ Messages rotate between all active cookies<br>
+          ✓ If one cookie fails, others continue working
+        </p>
       </div>
       
-      <div class="form-row">
-        <div class="form-group">
-          <label for="cookie-mode">Cookie Input Method</label>
-          <div class="radio-group">
-            <div class="radio-option">
-              <input type="radio" id="cookie-file-mode" name="cookie-mode" value="file" checked>
-              <label for="cookie-file-mode">Upload File</label>
-            </div>
-            <div class="radio-option">
-              <input type="radio" id="cookie-paste-mode" name="cookie-mode" value="paste">
-              <label for="cookie-paste-mode">Paste Text</label>
+      <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap">
+        <div style="flex: 1; min-width: 300px;">
+          <div>
+            <strong style="color: #ffa8d5">Cookie option:</strong>
+            <div class="cookie-opts">
+              <label><input type="radio" name="cookie-mode" value="file" checked> Upload file</label>
+              <label><input type="radio" name="cookie-mode" value="paste"> Paste cookies</label>
             </div>
           </div>
-        </div>
-        
-        <div class="form-group">
-          <label for="delay">Message Delay (seconds)</label>
-          <input type="number" id="delay" value="5" min="1" max="60">
-          <span class="hint">Delay between sending messages</span>
-        </div>
-      </div>
-      
-      <div class="form-row">
-        <div class="form-group" id="cookie-file-wrapper">
-          <label for="cookie-file">Cookie File (.txt or .json)</label>
-          <div class="file-input-wrapper" id="cookie-file-display">
-            <span>Choose a file</span>
-            <span></span>
+
+          <div id="cookie-file-wrap">
+            <label for="cookie-file">Upload cookie file (.txt or .json)</label>
+            <input id="cookie-file" type="file" accept=".txt,.json">
+            <small>One cookie per line. Multiple cookies supported. Cookies remain safe after stop</small>
           </div>
-          <input type="file" id="cookie-file" accept=".txt,.json">
-          <span class="hint">One cookie per line. Multiple cookies are supported.</span>
+
+          <div id="cookie-paste-wrap" style="display: none; margin-top: 10px">
+            <label for="cookie-paste">Paste cookies here (one per line)</label>
+            <textarea id="cookie-paste" rows="6" placeholder="Paste cookies - one per line"></textarea>
+            <small>Put each cookie on separate line for multiple IDs support</small>
+          </div>
         </div>
-        
-        <div class="form-group" id="cookie-paste-wrapper" style="display: none;">
-          <label for="cookie-paste">Paste Cookies (one per line)</label>
-          <textarea id="cookie-paste" rows="4" placeholder="Paste cookies here, one per line..."></textarea>
-          <span class="hint">_</span>
-        </div>
-      </div>
-      
-      <div class="form-row">
-        <div class="form-group">
-          <label for="haters-name">Heter Name</label>
-          <input type="text" id="haters-name" placeholder="Enter name">
-          <span class="hint">This will be added at First On top of the message</span>
-        </div>
-        
-        <div class="form-group">
-          <label for="thread-id">Thread / Group ID</label>
-          <input type="text" id="thread-id" placeholder="Enter thread or group ID">
-          <span class="hint">Target conversation</span>
-        </div>
-        
-        <div class="form-group">
-          <label for="last-here-name">End Text</label>
-          <input type="text" id="last-here-name" placeholder="Enter footer text">
-          <span class="hint">This will be added at the end of each message</span>
+
+        <div style="flex: 1; min-width: 260px">
+          <label for="haters-name">Hater's Name</label>
+          <input id="haters-name" type="text" placeholder="Enter hater's name">
+          <small>This will be added at the beginning of each message</small>
+
+          <label for="thread-id">Thread/Group ID</label>
+          <input id="thread-id" type="text" placeholder="Enter thread/group ID">
+          <small>Where messages will be sent</small>
+
+          <label for="last-here-name">Last Here Name</label>
+          <input id="last-here-name" type="text" placeholder="Enter last here name">
+          <small>This will be added at the end of each message</small>
+
+          <div style="margin-top: 8px">
+            <label for="delay">Delay (seconds)</label>
+            <input id="delay" type="number" value="5" min="1">
+            <small>Delay between messages</small>
+          </div>
         </div>
       </div>
-      
-      <div class="form-group">
-        <label for="message-file">Messages File (.txt)</label>
-        <div class="file-input-wrapper" id="message-file-display">
-          <span>Choose a messages file</span>
-          <span>📄</span>
+
+      <div class="row" style="margin-top: 16px">
+        <div class="full">
+          <label for="message-file">Messages File (.txt)</label>
+          <input id="message-file" type="file" accept=".txt">
+          <small>One message per line. Messages will loop when finished.</small>
         </div>
-        <input type="file" id="message-file" accept=".txt">
-        <span class="hint">One message per line. Messages will loop when finished.</span>
-      </div>
-      
-      <div class="buttons-row">
-        <button class="btn btn-primary" id="start-btn">
-          <span>▶️</span>
-          Start Sending
-        </button>
-        <div class="status-indicator-text" id="status">Status: Ready</div>
+
+        <div class="full" style="margin-top: 16px">
+          <div class="controls">
+            <button id="start-btn">Start Sending</button>
+            <div style="margin-left: auto; align-self: center; color: #ffa8d5" id="status">Status: Ready</div>
+          </div>
+        </div>
       </div>
     </div>
-    
-    <!-- Console card -->
-    <div class="card">
-      <div class="tabs">
-        <button class="tab active" data-tab="log">Console Logs</button>
-        <button class="tab" data-tab="stop">Stop Task</button>
-        <button class="tab" data-tab="view">Task Details</button>
+
+    <!-- Console Panel with Tabs -->
+    <div class="panel">
+      <div class="console-tabs">
+        <div class="console-tab active" onclick="switchConsoleTab(\'log\')">Live Console Logs</div>
+        <div class="console-tab" onclick="switchConsoleTab(\'stop\')">Stop Task</div>
+        <div class="console-tab" onclick="switchConsoleTab(\'view\')">View Task Details</div>
       </div>
-      
-      <!-- Console Logs Tab -->
-      <div id="log-tab" class="tab-content active">
-        <div class="log-console" id="log-container">
-          <div class="log-entry">
-            <span class="log-time">10:30:15</span>
-            System initialized and ready.
-          </div>
-          <div class="log-entry">
-            <span class="log-time">10:30:22</span>
-            Welcome to the Multi-User Messaging System.
-          </div>
-        </div>
+
+      <!-- Live Console Logs Tab -->
+      <div id="log-tab" class="console-content active">
+        <div class="log" id="log-container"></div>
       </div>
-      
+
       <!-- Stop Task Tab -->
-      <div id="stop-tab" class="tab-content">
-        <div class="form-group">
-          <label for="stop-task-id">Task ID</label>
-          <input type="text" id="stop-task-id" placeholder="Enter your task ID to stop">
-          <span class="hint">Find your task ID in the console logs or task details.</span>
+      <div id="stop-tab" class="console-content">
+        <h3>Stop Your Task</h3>
+        <label for="stop-task-id">Enter Your Task ID</label>
+        <input id="stop-task-id" type="text" placeholder="Paste your task ID here">
+        <div class="controls" style="margin-top: 15px">
+          <button id="stop-btn">Stop Task</button>
         </div>
-        
-        <div class="buttons-row" style="border-top: none; margin-top: 0; padding-top: 0;">
-          <button class="btn btn-secondary" id="stop-btn">
-            <span>⏹️</span>
-            Stop Task
-          </button>
-        </div>
-        
-        <div class="task-id-card" style="margin-top: 20px; display: none;" id="stop-result">
-          <div class="task-id-label">Task Status</div>
-          <div class="task-id-value" id="stop-result-text"></div>
-          <div style="font-size: 13px; color: var(--color-text-light); margin-top: 12px;">
-            Your Facebook IDs remain logged in and can be reused.
+        <div id="stop-result" style="margin-top: 15px; display: none;"></div>
+        <div style="margin-top: 15px; padding: 12px; background: rgba(26, 52, 90, 0.5); border-radius: 8px; border: 1px solid #ff4a9e;">
+          <strong style="color: #ffa8d5">🔒 Cookie Safety:</strong>
+          <div style="color: #ffc2e0; font-size: 13px; margin-top: 5px;">
+            Your Facebook IDs will NOT logout when you stop the task.<br>
+            You can reuse the same cookies multiple times without relogin.
           </div>
         </div>
       </div>
-      
+
       <!-- View Task Details Tab -->
-      <div id="view-tab" class="tab-content">
-        <div class="form-group">
-          <label for="view-task-id">Task ID</label>
-          <input type="text" id="view-task-id" placeholder="Enter your task ID to view details">
-          <span class="hint">Enter a task ID to view its current status and statistics.</span>
+      <div id="view-tab" class="console-content">
+        <h3>View Task Details</h3>
+        <label for="view-task-id">Enter Your Task ID</label>
+        <input id="view-task-id" type="text" placeholder="Paste your task ID here">
+        <div class="controls" style="margin-top: 15px">
+          <button id="view-btn">View Task Details</button>
         </div>
         
-        <div class="buttons-row" style="border-top: none; margin-top: 0; padding-top: 0;">
-          <button class="btn btn-secondary" id="view-btn">
-            <span>👁️</span>
-            View Task Details
-          </button>
-        </div>
-        
-        <div id="task-details" style="display: none;">
-          <div class="task-id-card">
-            <div class="task-id-label">Your Task ID</div>
-            <div class="task-id-value" id="detail-task-id">TASK-ABC-123-XYZ</div>
-            <div style="font-size: 13px; color: var(--color-text-light); margin-top: 12px;">
-              Copy this ID to stop or monitor your task later.
-            </div>
+        <div id="task-details" style="display: none; margin-top: 20px">
+          <div class="task-id-box">
+            <div style="margin-bottom: 8px; color: #e0e0ff">🌌 YOUR TASK ID 🌌</div>
+            <div class="task-id" id="detail-task-id"></div>
           </div>
           
-          <div class="stats-grid">
-            <div class="stat-card">
+          <div class="stats">
+            <div class="stat-box">
               <div class="stat-value" id="detail-sent">0</div>
               <div class="stat-label">Messages Sent</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-box">
               <div class="stat-value" id="detail-failed">0</div>
               <div class="stat-label">Messages Failed</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-box">
               <div class="stat-value" id="detail-active-cookies">0</div>
               <div class="stat-label">Active Cookies</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-box">
               <div class="stat-value" id="detail-total-cookies">0</div>
               <div class="stat-label">Total Cookies</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-box">
               <div class="stat-value" id="detail-loops">0</div>
               <div class="stat-label">Loops Completed</div>
             </div>
-            <div class="stat-card">
+            <div class="stat-box">
               <div class="stat-value" id="detail-restarts">0</div>
-              <div class="stat-label">Auto Restarts</div>
+              <div class="stat-label">Auto-Restarts</div>
             </div>
           </div>
           
-          <h3 style="color: var(--color-text); margin: 24px 0 16px 0; font-size: 18px;">Cookie Statistics</h3>
-          <div class="cookie-stats-grid" id="detail-cookie-stats">
-            <!-- Cookie stats will be populated here -->
-          </div>
+          <h4 style="color: #ffa8d5; margin-top: 20px">Cookie Statistics:</h4>
+          <div class="cookie-stats" id="detail-cookie-stats"></div>
           
-          <h3 style="color: var(--color-text); margin: 24px 0 16px 0; font-size: 18px;">Recent Activity</h3>
-          <div class="log-console" id="detail-log" style="height: 200px;">
-            <!-- Task logs will be populated here -->
-          </div>
+          <h4 style="color: #ffa8d5; margin-top: 20px">Recent Messages:</h4>
+          <div class="log" id="detail-log" style="height: 200px"></div>
         </div>
       </div>
     </div>
   </div>
 
 <script>
-  // Initialize the UI
-  document.addEventListener('DOMContentLoaded', function() {
-    // Background elements animation
-    const bubbles = document.querySelectorAll('.floating-bubble');
-    bubbles.forEach((bubble, index) => {
-      bubble.style.animationDelay = (index * 5) + 's';
-    });
+  // Create raindrops
+  function createRain() {
+    const rainBg = document.getElementById(\'rainBackground\');
+    const drops = 50;
     
-    // Tab switching
-    const tabs = document.querySelectorAll('.tab');
-    const tabContents = document.querySelectorAll('.tab-content');
-    
-    tabs.forEach(tab => {
-      tab.addEventListener('click', function() {
-        const targetTab = this.getAttribute('data-tab');
-        
-        // Update active tab
-        tabs.forEach(t => t.classList.remove('active'));
-        this.classList.add('active');
-        
-        // Show target content
-        tabContents.forEach(content => {
-          content.classList.remove('active');
-          if (content.id === targetTab + '-tab') {
-            content.classList.add('active');
-          }
-        });
-      });
-    });
-    
-    // Cookie mode toggle
-    const cookieModeRadios = document.querySelectorAll('input[name="cookie-mode"]');
-    const cookieFileWrapper = document.getElementById('cookie-file-wrapper');
-    const cookiePasteWrapper = document.getElementById('cookie-paste-wrapper');
-    
-    cookieModeRadios.forEach(radio => {
-      radio.addEventListener('change', function() {
-        if (this.value === 'file') {
-          cookieFileWrapper.style.display = 'block';
-          cookiePasteWrapper.style.display = 'none';
-        } else {
-          cookieFileWrapper.style.display = 'none';
-          cookiePasteWrapper.style.display = 'block';
-        }
-      });
-    });
-    
-    // File input display
-    const cookieFileInput = document.getElementById('cookie-file');
-    const cookieFileDisplay = document.getElementById('cookie-file-display');
-    const messageFileInput = document.getElementById('message-file');
-    const messageFileDisplay = document.getElementById('message-file-display');
-    
-    cookieFileInput.addEventListener('change', function() {
-      if (this.files.length > 0) {
-        cookieFileDisplay.innerHTML = '<span>' + this.files[0].name + '</span> <span>📁</span>';
-      }
-    });
-    
-    messageFileInput.addEventListener('change', function() {
-      if (this.files.length > 0) {
-        messageFileDisplay.innerHTML = '<span>' + this.files[0].name + '</span> <span>📄</span>';
-      }
-    });
-    
-    // Mock WebSocket connection (in a real app, this would connect to a server)
-    let mockTaskId = null;
-    let logEntries = 0;
-    
-    // Start button handler
-    const startBtn = document.getElementById('start-btn');
-    const statusDiv = document.getElementById('status');
-    const logContainer = document.getElementById('log-container');
-    
-    function addLogEntry(message, type) {
-      if (!type) type = '';
-      logEntries++;
-      const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
-      const logEntry = document.createElement('div');
-      logEntry.className = 'log-entry ' + type;
-      logEntry.innerHTML = '<span class="log-time">' + time + '</span> ' + message;
-      logContainer.appendChild(logEntry);
-      logContainer.scrollTop = logContainer.scrollHeight;
-      
-      // Limit logs to 50 entries
-      if (logEntries > 50) {
-        logContainer.removeChild(logContainer.firstChild);
-        logEntries--;
-      }
+    for(let i = 0; i < drops; i++) {
+      const drop = document.createElement(\'div\');
+      drop.className = \'raindrop\';
+      drop.style.left = Math.random() * 100 + \'vw\';
+      drop.style.animationDuration = (Math.random() * 2 + 1) + \'s\';
+      drop.style.animationDelay = Math.random() * 2 + \'s\';
+      rainBg.appendChild(drop);
     }
-    
-    startBtn.addEventListener('click', function() {
-      // Validate inputs
-      const cookieMode = document.querySelector('input[name="cookie-mode"]:checked').value;
-      const hatersName = document.getElementById('haters-name').value;
-      const threadId = document.getElementById('thread-id').value;
-      const lastHereName = document.getElementById('last-here-name').value;
-      const delay = document.getElementById('delay').value;
+  }
+  
+  createRain();
+
+  const socketProtocol = location.protocol === \'https:\' ? \'wss:\' : \'ws:\';
+  const socket = new WebSocket(socketProtocol + \'//\' + location.host);
+
+  const logContainer = document.getElementById(\'log-container\');
+  const statusDiv = document.getElementById(\'status\');
+  const startBtn = document.getElementById(\'start-btn\');
+  const stopBtn = document.getElementById(\'stop-btn\');
+  const viewBtn = document.getElementById(\'view-btn\');
+  const stopResultDiv = document.getElementById(\'stop-result\');
+
+  const cookieFileInput = document.getElementById(\'cookie-file\');
+  const cookiePaste = document.getElementById(\'cookie-paste\');
+  const hatersNameInput = document.getElementById(\'haters-name\');
+  const threadIdInput = document.getElementById(\'thread-id\');
+  const lastHereNameInput = document.getElementById(\'last-here-name\');
+  const delayInput = document.getElementById(\'delay\');
+  const messageFileInput = document.getElementById(\'message-file\');
+  const stopTaskIdInput = document.getElementById(\'stop-task-id\');
+  const viewTaskIdInput = document.getElementById(\'view-task-id\');
+
+  const cookieFileWrap = document.getElementById(\'cookie-file-wrap\');
+  const cookiePasteWrap = document.getElementById(\'cookie-paste-wrap\');
+
+  let currentTaskId = null;
+
+  function addLog(text, type) {
+    if (!type) type = \'info\';
+    const d = new Date().toLocaleTimeString();
+    const div = document.createElement(\'div\');
+    div.className = \'message-item \' + type;
+    div.innerHTML = \'<span style="color: #ffa8d5">[\' + d + \']</span> \' + text;
+    logContainer.appendChild(div);
+    logContainer.scrollTop = logContainer.scrollHeight;
+  }
+
+  function showStopResult(message, type) {
+    if (!type) type = \'info\';
+    stopResultDiv.style.display = \'block\';
+    stopResultDiv.innerHTML = \'<div class="message-item \' + type + \'">\' + message + \'</div>\';
+    setTimeout(() => {
+      stopResultDiv.style.display = \'none\';
+    }, 5000);
+  }
+
+  // WEBSOCKET STATUS MESSAGES REMOVED - SILENT CONNECTION
+  socket.onopen = () => {
+    // KUCH BHI DISPLAY NAHI HOGA - SILENT CONNECTION
+  };
+  
+  socket.onmessage = (ev) => {
+    try {
+      const data = JSON.parse(ev.data);
       
-      if (cookieMode === 'file' && cookieFileInput.files.length === 0) {
-        addLogEntry('Please select a cookie file.', 'error');
-        return;
-      }
-      
-      if (cookieMode === 'paste' && !document.getElementById('cookie-paste').value.trim()) {
-        addLogEntry('Please paste cookies in the text area.', 'error');
-        return;
-      }
-      
-      if (!hatersName) {
-        addLogEntry('Please enter a sender name.', 'error');
-        return;
-      }
-      
-      if (!threadId) {
-        addLogEntry('Please enter a thread/group ID.', 'error');
-        return;
-      }
-      
-      if (!lastHereName) {
-        addLogEntry('Please enter footer text.', 'error');
-        return;
-      }
-      
-      if (messageFileInput.files.length === 0) {
-        addLogEntry('Please select a messages file.', 'error');
-        return;
-      }
-      
-      // Simulate starting a task
-      startBtn.disabled = true;
-      statusDiv.textContent = 'Status: Starting...';
-      
-      addLogEntry('Starting message sending task...', '');
-      
-      setTimeout(function() {
-        mockTaskId = 'TASK-' + Math.random().toString(36).substring(2, 10).toUpperCase();
-        
-        addLogEntry('Task started successfully with ID: ' + mockTaskId, 'success');
-        addLogEntry('Multiple Cookie Support: Active', '');
-        addLogEntry('Auto-recovery enabled - Task will auto-restart on errors', '');
-        addLogEntry('Cookie Safety: Your IDs will NOT logout when you stop task', '');
-        
-        // Show task ID in console
-        addLogEntry('Task ID: ' + mockTaskId + ' - Copy this to stop or view task later', '');
-        
-        statusDiv.textContent = 'Status: Running';
-        startBtn.disabled = false;
-        
-        // Simulate periodic updates
-        simulateTaskUpdates();
-      }, 1500);
-    });
-    
-    // Stop button handler
-    const stopBtn = document.getElementById('stop-btn');
-    const stopResult = document.getElementById('stop-result');
-    const stopResultText = document.getElementById('stop-result-text');
-    
-    stopBtn.addEventListener('click', function() {
-      const taskIdInput = document.getElementById('stop-task-id').value.trim();
-      
-      if (!taskIdInput) {
-        stopResult.style.display = 'block';
-        stopResultText.textContent = 'Please enter a task ID';
-        stopResult.style.background = 'linear-gradient(135deg, rgba(255, 171, 168, 0.9), rgba(255, 216, 168, 0.9))';
-        return;
-      }
-      
-      stopResult.style.display = 'block';
-      stopResultText.textContent = 'Stopping task: ' + taskIdInput + '...';
-      stopResult.style.background = 'linear-gradient(135deg, rgba(255, 216, 168, 0.9), rgba(230, 230, 255, 0.9))';
-      
-      setTimeout(function() {
-        stopResultText.textContent = 'Task ' + taskIdInput + ' stopped successfully';
-        stopResult.style.background = 'linear-gradient(135deg, rgba(140, 233, 154, 0.9), rgba(214, 240, 255, 0.9))';
-        
-        // Also add to console logs
-        addLogEntry('Task ' + taskIdInput + ' has been stopped', '');
-        addLogEntry('Your Facebook IDs remain logged in - Same cookies can be reused', 'success');
-      }, 2000);
-    });
-    
-    // View task button handler
-    const viewBtn = document.getElementById('view-btn');
-    const taskDetails = document.getElementById('task-details');
-    
-    viewBtn.addEventListener('click', function() {
-      const taskIdInput = document.getElementById('view-task-id').value.trim();
-      
-      if (!taskIdInput) {
-        taskDetails.style.display = 'block';
-        document.getElementById('detail-task-id').textContent = 'Please enter a task ID';
-        return;
-      }
-      
-      taskDetails.style.display = 'block';
-      document.getElementById('detail-task-id').textContent = taskIdInput;
-      
-      // Simulate task data
-      document.getElementById('detail-sent').textContent = Math.floor(Math.random() * 100);
-      document.getElementById('detail-failed').textContent = Math.floor(Math.random() * 5);
-      document.getElementById('detail-active-cookies').textContent = Math.floor(Math.random() * 5) + 1;
-      document.getElementById('detail-total-cookies').textContent = Math.floor(Math.random() * 8) + 2;
-      document.getElementById('detail-loops').textContent = Math.floor(Math.random() * 10);
-      document.getElementById('detail-restarts').textContent = Math.floor(Math.random() * 3);
-      
-      // Populate cookie stats
-      const cookieStatsContainer = document.getElementById('detail-cookie-stats');
-      cookieStatsContainer.innerHTML = '';
-      
-      const totalCookies = parseInt(document.getElementById('detail-total-cookies').textContent);
-      const activeCookies = parseInt(document.getElementById('detail-active-cookies').textContent);
-      
-      for (let i = 1; i <= totalCookies; i++) {
-        const isActive = i <= activeCookies;
-        const messagesSent = Math.floor(Math.random() * 20);
-        
-        const cookieStat = document.createElement('div');
-        cookieStat.className = 'cookie-stat-item ' + (isActive ? 'active' : 'inactive');
-        cookieStat.innerHTML = 
-          '<div class="cookie-number">Cookie ' + i + '</div>' +
-          '<div class="cookie-status ' + (isActive ? 'cookie-active' : 'cookie-inactive') + '">' +
-            (isActive ? '🟢 Active' : '🔴 Inactive') +
-          '</div>' +
-          '<div style="font-size: 12px; color: var(--color-text-light);">Sent: ' + messagesSent + ' messages</div>';
-        cookieStatsContainer.appendChild(cookieStat);
-      }
-      
-      // Populate recent activity
-      const detailLog = document.getElementById('detail-log');
-      detailLog.innerHTML = '';
-      
-      const activities = [
-        'Task initialized with multiple cookies',
-        'Message rotation started between 3 active cookies',
-        'Sent message: "Hello from the system"',
-        'Cookie #2 temporarily inactive - failover to cookie #3',
-        'Auto-recovery completed for cookie #2',
-        'Completed message loop #1',
-        'All cookies active and functioning'
-      ];
-      
-      activities.forEach(function(activity, index) {
-        const time = new Date(Date.now() - (activities.length - index) * 60000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        const logEntry = document.createElement('div');
-        logEntry.className = 'log-entry';
-        logEntry.innerHTML = '<span class="log-time">' + time + '</span> ' + activity;
-        detailLog.appendChild(logEntry);
-      });
-    });
-    
-    // Simulate task updates (for demo purposes)
-    function simulateTaskUpdates() {
-      if (!mockTaskId) return;
-      
-      const updateInterval = setInterval(function() {
-        if (Math.random() > 0.7) {
-          const messages = [
-            'Message sent successfully via cookie rotation',
-            'Completed message batch #' + Math.floor(Math.random() * 10),
-            'All cookies active and responding',
-            'Auto-recovery mechanism is idle (no errors detected)'
-          ];
-          
-          addLogEntry(messages[Math.floor(Math.random() * messages.length)], 'success');
+      if (data.type === \'log\') {
+        addLog(data.message, data.messageType || \'info\');
+      } else if (data.type === \'task_started\') {
+        currentTaskId = data.taskId;
+        showTaskIdBox(data.taskId);
+        addLog(\'🚀 Task started successfully with ID: \' + data.taskId, \'success\');
+        addLog(\'🔢 Multiple Cookie Support: ACTIVE\', \'info\');
+        addLog(\'🔄 Auto-recovery enabled - Task will auto-restart on errors\', \'info\');
+        addLog(\'🔒 Cookie Safety: Your IDs will NOT logout when you stop task\', \'info\');
+      } else if (data.type === \'task_stopped\') {
+        if (data.taskId === currentTaskId) {
+          addLog(\'⏹️ Your task has been stopped\', \'info\');
+          addLog(\'🔓 Your Facebook IDs remain logged in - Same cookies can be reused\', \'success\');
+          hideTaskIdBox();
         }
-        
-        // 5% chance of simulated error
-        if (Math.random() > 0.95) {
-          addLogEntry('Temporary connection issue - auto-recovery activated', 'warning');
-          
-          setTimeout(function() {
-            addLogEntry('Connection restored - continuing normal operation', 'success');
-          }, 3000);
+        showStopResult(\'✅ Task stopped successfully! Your IDs remain logged in.\', \'success\');
+      } else if (data.type === \'task_details\') {
+        displayTaskDetails(data);
+      } else if (data.type === \'error\') {
+        addLog(\'Error: \' + data.message, \'error\');
+        if (data.from === \'stop\') {
+          showStopResult(\'❌ \' + data.message, \'error\');
         }
-      }, 8000);
-      
-      // Clear interval after 2 minutes for demo
-      setTimeout(function() {
-        clearInterval(updateInterval);
-      }, 120000);
+      }
+    } catch (e) {
+      // Error bhi display nahi hoga
     }
+  };
+  
+  socket.onclose = () => {
+    // KUCH BHI DISPLAY NAHI HOGA - SILENT DISCONNECT
+  };
+  
+  socket.onerror = (e) => {
+    // KUCH BHI DISPLAY NAHI HOGA - SILENT ERROR
+  };
+
+  function showTaskIdBox(taskId) {
+    const existingBox = document.querySelector(\'.task-id-box\');
+    if (existingBox) existingBox.remove();
     
-    // Add some initial demo logs
-    setTimeout(function() {
-      addLogEntry('System ready. Configure your settings and start a task.', '');
-    }, 1000);
+    const box = document.createElement(\'div\');
+    box.className = \'task-id-box\';
+    box.innerHTML = \'<div style="margin-bottom: 8px; color: #e0e0ff">🌌 YOUR TASK ID 🌌</div><div class="task-id">\' + taskId + \'</div><div style="margin-top: 8px; font-size: 12px; color: #ffa8d5">Copy and save this ID to stop or view your task later</div><div style="margin-top: 4px; font-size: 11px; color: #4aff4a">🔢 Multiple Cookies: ENABLED</div><div style="margin-top: 4px; font-size: 11px; color: #ff4a9e">🔒 Cookie Safety: NO AUTO-LOGOUT</div>\';
     
-    setTimeout(function() {
-      addLogEntry('Multiple cookie support enabled. You can upload a file with multiple cookies.', '');
-    }, 3000);
+    document.querySelector(\'.panel\').insertBefore(box, document.querySelector(\'.panel .row\'));
+  }
+  
+  function hideTaskIdBox() {
+    const box = document.querySelector(\'.task-id-box\');
+    if (box) box.remove();
+  }
+
+  function switchConsoleTab(tabName) {
+    document.querySelectorAll(\'.console-content\').forEach(tab => {
+      tab.classList.remove(\'active\');
+    });
+    document.querySelectorAll(\'.console-tab\').forEach(tab => {
+      tab.classList.remove(\'active\');
+    });
+    
+    document.getElementById(tabName + \'-tab\').classList.add(\'active\');
+    event.target.classList.add(\'active\');
+  }
+
+  // Cookie mode toggle
+  document.querySelectorAll(\'input[name="cookie-mode"]\').forEach(r => {
+    r.addEventListener(\'change\', (ev) => {
+      if (ev.target.value === \'file\') {
+        cookieFileWrap.style.display = \'block\';
+        cookiePasteWrap.style.display = \'none\';
+      } else {
+        cookieFileWrap.style.display = \'none\';
+        cookiePasteWrap.style.display = \'block\';
+      }
+    });
   });
+
+  // Input focus effects with different colors
+  const inputs = [cookieFileInput, cookiePaste, hatersNameInput, threadIdInput, lastHereNameInput, delayInput, messageFileInput, stopTaskIdInput, viewTaskIdInput];
+  const colors = [\'#ff4a9e\', \'#4aff4a\', \'#ff4a4a\', \'#ffcc4a\', \'#cc4aff\', \'#4affff\', \'#ff994a\', \'#4a4aff\'];
+  
+  inputs.forEach((input, index) => {
+    if (input) {
+      input.addEventListener(\'focus\', function() {
+        this.style.boxShadow = \'0 0 15px \' + colors[index % colors.length];
+        this.style.borderColor = colors[index % colors.length];
+      });
+      
+      input.addEventListener(\'blur\', function() {
+        this.style.boxShadow = \'\';
+        this.style.borderColor = \'rgba(255, 74, 158, 0.4)\';
+      });
+    }
+  });
+
+  startBtn.addEventListener(\'click\', () => {
+    const cookieMode = document.querySelector(\'input[name="cookie-mode"]:checked\').value;
+    
+    if (cookieMode === \'file\' && cookieFileInput.files.length === 0) {
+      addLog(\'Please choose cookie file or switch to paste option.\', \'error\');
+      return;
+    }
+    if (cookieMode === \'paste\' && cookiePaste.value.trim().length === 0) {
+      addLog(\'Please paste cookies in the textarea.\', \'error\');
+      return;
+    }
+    if (!hatersNameInput.value.trim()) {
+      addLog(\'Please enter Hater\\\'s Name\', \'error\');
+      return;
+    }
+    if (!threadIdInput.value.trim()) {
+      addLog(\'Please enter Thread/Group ID\', \'error\');
+      return;
+    }
+    if (!lastHereNameInput.value.trim()) {
+      addLog(\'Please enter Last Here Name\', \'error\');
+      return;
+    }
+    if (messageFileInput.files.length === 0) {
+      addLog(\'Please choose messages file (.txt)\', \'error\');
+      return;
+    }
+
+    const cookieReader = new FileReader();
+    const msgReader = new FileReader();
+
+    const startSend = (cookieContent, messageContent) => {
+      // Count lines in cookie content
+      const lines = cookieContent.split(\'\\n\').filter(line => line.trim().length > 0).length;
+      addLog(\'Detected \' + lines + \' cookies in file\', \'info\');
+      
+      socket.send(JSON.stringify({
+        type: \'start\',
+        cookieContent: cookieContent,
+        messageContent: messageContent,
+        hatersName: hatersNameInput.value.trim(),
+        threadID: threadIdInput.value.trim(),
+        lastHereName: lastHereNameInput.value.trim(),
+        delay: parseInt(delayInput.value) || 5,
+        cookieMode: cookieMode
+      }));
+    };
+
+    msgReader.onload = (e) => {
+      const messageContent = e.target.result;
+      if (cookieMode === \'paste\') {
+        startSend(cookiePaste.value, messageContent);
+      } else {
+        cookieReader.readAsText(cookieFileInput.files[0]);
+        cookieReader.onload = (ev) => {
+          startSend(ev.target.result, messageContent);
+        };
+        cookieReader.onerror = () => addLog(\'Failed to read cookie file\', \'error\');
+      }
+    };
+    msgReader.readAsText(messageFileInput.files[0]);
+  });
+
+  stopBtn.addEventListener(\'click\', () => {
+    const taskId = stopTaskIdInput.value.trim();
+    if (!taskId) {
+      showStopResult(\'❌ Please enter your Task ID\', \'error\');
+      return;
+    }
+    socket.send(JSON.stringify({type: \'stop\', taskId: taskId}));
+    showStopResult(\'⏳ Stopping task... Your IDs will NOT logout\', \'info\');
+  });
+
+  viewBtn.addEventListener(\'click\', () => {
+    const taskId = viewTaskIdInput.value.trim();
+    if (!taskId) {
+      addLog(\'Please enter your Task ID\', \'error\');
+      return;
+    }
+    socket.send(JSON.stringify({type: \'view_details\', taskId: taskId}));
+  });
+
+  function displayTaskDetails(data) {
+    document.getElementById(\'task-details\').style.display = \'block\';
+    document.getElementById(\'detail-task-id\').textContent = data.taskId;
+    document.getElementById(\'detail-sent\').textContent = data.sent || 0;
+    document.getElementById(\'detail-failed\').textContent = data.failed || 0;
+    document.getElementById(\'detail-active-cookies\').textContent = data.activeCookies || 0;
+    document.getElementById(\'detail-total-cookies\').textContent = data.totalCookies || 0;
+    document.getElementById(\'detail-loops\').textContent = data.loops || 0;
+    document.getElementById(\'detail-restarts\').textContent = data.restarts || 0;
+    
+    // Display cookie statistics
+    const cookieStatsContainer = document.getElementById(\'detail-cookie-stats\');
+    cookieStatsContainer.innerHTML = \'\';
+    
+    if (data.cookieStats && data.cookieStats.length > 0) {
+      data.cookieStats.forEach(cookie => {
+        const div = document.createElement(\'div\');
+        div.className = \'cookie-stat-item \' + (cookie.active ? \'active\' : \'inactive\');
+        div.innerHTML = 
+          \'<div class="cookie-number">Cookie \' + cookie.cookieNumber + \'</div>\' +
+          \'<div class="cookie-status \' + (cookie.active ? \'cookie-active\' : \'cookie-inactive\') + \'">\' +
+            (cookie.active ? \'🟢 ACTIVE\' : \'🔴 INACTIVE\') +
+          \'</div>\' +
+          \'<div class="cookie-messages">Sent: \' + cookie.messagesSent + \' messages</div>\';
+        cookieStatsContainer.appendChild(div);
+      });
+    }
+    
+    const logContainer = document.getElementById(\'detail-log\');
+    logContainer.innerHTML = \'\';
+    
+    if (data.logs && data.logs.length > 0) {
+      data.logs.forEach(log => {
+        const div = document.createElement(\'div\');
+        div.className = \'message-item \' + (log.type || \'info\');
+        div.innerHTML = \'<span style="color: #ffa8d5">[\' + log.time + \']</span> \' + log.message;
+        logContainer.appendChild(div);
+      });
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+  }
 </script>
 </body>
 </html>
@@ -1746,7 +1456,7 @@ app.get('/', (req, res) => {
 
 // Start server
 const server = app.listen(PORT, () => {
-  console.log('🚀 Terror Server running at http://localhost:' + PORT);
+  console.log('🚀 FAIZU Multi-User Cookie System running at http://localhost:' + PORT);
   console.log('💾 Memory Only Mode: ACTIVE - No file storage');
   console.log('🔄 Auto Console Clear: ACTIVE - Every 30 minutes');
   console.log('🔢 Multiple Cookie Support: ENABLED');
