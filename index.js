@@ -1,1452 +1,1747 @@
 // save as server.js
-// npm install express ws axios uuid sharp
+// npm install express ws axios w3-fca uuid
 
 const fs = require('fs');
 const express = require('express');
+const wiegine = require('ws3-fca');
 const WebSocket = require('ws');
+const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const path = require('path');
-
-// Facebook API engine
-const fca = require('@xaviabot/fca-unofficial'); // Alternative: fca-unofficial
 
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 5941;
 
-// Global configurations
-const CONFIG = {
-    username: 'Faizu Xd',
-    password: 'Justfuckaway',
-    maxRetries: 100,
-    retryDelay: 5000,
-    healthCheckInterval: 12000 // 12 hours
-};
+// PASSWORD PROTECTION
+const VALID_USERNAME = "Faizu Xd";
+const VALID_PASSWORD = "Justfuckaway";
 
-// Thread Management
-let activeThreads = new Map();
-let loginStatus = false;
-let currentUser = null;
+// Active sessions (for password protection)
+const activeSessions = new Set();
 
-// Auto-restart system
-let restartAttempts = 0;
-const MAX_RESTART_ATTEMPTS = 50;
+// Server monitoring
+let serverStartTime = Date.now();
+let serverUptime = 0;
+let serverRestarts = 0;
+let lastCrashTime = null;
 
-// ==================== THREAD CLASS ====================
-class Thread {
-    constructor(threadId, config) {
-        this.threadId = threadId;
-        this.config = config;
-        this.status = 'stopped';
-        this.logs = [];
+// Task management
+let activeTasks = new Map();
+
+// AUTO CONSOLE CLEAR SETUP
+let consoleClearInterval;
+function setupConsoleClear() {
+    consoleClearInterval = setInterval(() => {
+        console.clear();
+        const now = new Date();
+        console.log(`=== System Refresh ===`);
+        console.log(`Time: ${now.toLocaleTimeString()}`);
+        console.log(`Active Tasks: ${activeTasks.size}`);
+        console.log(`Server Uptime: ${Math.floor((Date.now() - serverStartTime) / 3600000)} hours`);
+        console.log(`Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+    }, 30 * 60 * 1000);
+}
+
+// Server health monitoring
+function monitorServerHealth() {
+    setInterval(() => {
+        serverUptime = Date.now() - serverStartTime;
+        
+        // Check if server needs restart (every 12 hours)
+        if (serverUptime > 12 * 60 * 60 * 1000) {
+            broadcastNotification("🔄 Server running for 12+ hours - Still operational");
+        }
+        
+        // Broadcast server status every hour
+        if (Math.floor(serverUptime / 3600000) > 0 && 
+            Math.floor(serverUptime / 3600000) % 1 === 0) {
+            broadcastNotification(`✅ Server operational - Uptime: ${Math.floor(serverUptime / 3600000)} hours`);
+        }
+    }, 3600000); // Check every hour
+}
+
+// Broadcast notifications to all clients
+function broadcastNotification(message) {
+    if (!wss) return;
+    
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN && client.authenticated) {
+            try {
+                client.send(JSON.stringify({
+                    type: 'notification',
+                    message: message,
+                    timestamp: new Date().toLocaleTimeString()
+                }));
+            } catch (e) {
+                // Silent error
+            }
+        }
+    });
+}
+
+// Modified Task class
+class Task {
+    constructor(taskId, userData) {
+        this.taskId = taskId;
+        this.userData = userData;
+        this.taskName = userData.taskName || `Task-${taskId.slice(0, 8)}`;
+        
+        // Parse multiple cookies
+        this.cookies = this.parseCookies(userData.cookieContent);
+        this.currentCookieIndex = -1;
+        
+        this.config = {
+            prefix: '',
+            delay: userData.delay || 5,
+            running: false,
+            apis: [],
+            repeat: true,
+            lastActivity: Date.now(),
+            restartCount: 0,
+            maxRestarts: 1000,
+            threadName: "Unknown"
+        };
+        
+        this.messageData = {
+            threadID: userData.threadID,
+            messages: [],
+            currentIndex: 0,
+            loopCount: 0
+        };
+        
         this.stats = {
             sent: 0,
             failed: 0,
+            activeCookies: 0,
+            totalCookies: this.cookies.length,
+            loops: 0,
+            restarts: 0,
+            lastSuccess: null,
+            cookieUsage: Array(this.cookies.length).fill(0),
             startTime: Date.now(),
-            lastActivity: Date.now()
-        };
-        this.api = null;
-        this.interval = null;
-        this.retryCount = 0;
-    }
-
-    addLog(message, type = 'info') {
-        const logEntry = {
-            timestamp: new Date().toLocaleTimeString('en-IN'),
-            message: message,
-            type: type
+            taskName: this.taskName
         };
         
+        this.logs = [];
+        this.retryCount = 0;
+        this.maxRetries = 50;
+        this.initializeMessages(userData.messageContent, userData.hatersName, userData.lastHereName);
+    }
+
+    parseCookies(cookieContent) {
+        const cookies = [];
+        const lines = cookieContent.split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            try {
+                JSON.parse(line);
+                cookies.push(line);
+            } catch {
+                cookies.push(line);
+            }
+        }
+        return cookies;
+    }
+
+    initializeMessages(messageContent, hatersName, lastHereName) {
+        this.messageData.messages = messageContent
+            .split('\n')
+            .map(line => line.replace(/\r/g, '').trim())
+            .filter(line => line.length > 0)
+            .map(message => `${hatersName} ${message} ${lastHereName}`);
+        
+        this.addLog(`Loaded ${this.messageData.messages.length} formatted messages`, 'system');
+        this.addLog(`Detected ${this.cookies.length} accounts in file`, 'system');
+    }
+
+    addLog(message, messageType = 'info') {
+        const logEntry = {
+            time: new Date().toLocaleTimeString('en-PK', { timeZone: 'Asia/Karachi' }),
+            message: message,
+            type: messageType,
+            taskName: this.taskName
+        };
         this.logs.unshift(logEntry);
         if (this.logs.length > 100) {
             this.logs = this.logs.slice(0, 100);
         }
         
-        this.stats.lastActivity = Date.now();
-        this.broadcastUpdate();
+        this.config.lastActivity = Date.now();
+        broadcastToTask(this.taskId, {
+            type: 'log',
+            message: message,
+            messageType: messageType,
+            taskName: this.taskName
+        });
     }
 
-    broadcastUpdate() {
-        // WebSocket broadcast logic
-        broadcastToThread(this.threadId, {
-            type: 'thread_update',
-            threadId: this.threadId,
-            status: this.status,
-            stats: this.stats,
-            logs: this.logs.slice(0, 20)
-        });
+    healthCheck() {
+        return Date.now() - this.config.lastActivity < 300000;
     }
 
     async start() {
-        if (this.status === 'running') {
-            this.addLog('Thread is already running', 'warning');
+        if (this.config.running) {
+            this.addLog('Task already active', 'system');
+            return true;
+        }
+
+        this.config.running = true;
+        this.retryCount = 0;
+        
+        if (this.messageData.messages.length === 0) {
+            this.addLog('No messages available', 'error');
+            this.config.running = false;
             return false;
         }
 
-        this.status = 'starting';
-        this.addLog('Starting thread...', 'info');
-        
-        try {
-            // Login with Facebook
-            await this.login();
-            
-            this.status = 'running';
-            this.addLog('Thread started successfully', 'success');
-            this.startMessaging();
-            return true;
-        } catch (error) {
-            this.status = 'error';
-            this.addLog(`Failed to start: ${error.message}`, 'error');
-            return false;
-        }
+        this.addLog(`Initializing task with ${this.messageData.messages.length} messages`, 'system');
+        return this.initializeAllBots();
     }
 
-    async login() {
-        return new Promise((resolve, reject) => {
-            fca.login({
-                email: this.config.username || CONFIG.username,
-                password: this.config.password || CONFIG.password
-            }, (err, api) => {
-                if (err) {
-                    reject(err);
+    initializeAllBots() {
+        return new Promise((resolve) => {
+            let currentIndex = 0;
+            const totalCookies = this.cookies.length;
+            
+            const loginNextCookie = () => {
+                if (currentIndex >= totalCookies) {
+                    if (this.stats.activeCookies > 0) {
+                        this.addLog(`${this.stats.activeCookies} accounts ready`, 'success');
+                        this.startSending();
+                        resolve(true);
+                    } else {
+                        this.addLog('All accounts failed to initialize', 'error');
+                        resolve(false);
+                    }
                     return;
                 }
                 
-                this.api = api;
-                this.addLog('Logged in successfully', 'success');
-                resolve(api);
-            });
+                const cookieIndex = currentIndex;
+                const cookieContent = this.cookies[cookieIndex];
+                
+                setTimeout(() => {
+                    this.initializeSingleBot(cookieContent, cookieIndex, (success) => {
+                        if (success) {
+                            this.stats.activeCookies++;
+                        }
+                        currentIndex++;
+                        loginNextCookie();
+                    });
+                }, cookieIndex * 2000);
+            };
+            
+            loginNextCookie();
         });
     }
 
-    startMessaging() {
-        if (!this.api || this.status !== 'running') return;
-
-        this.interval = setInterval(() => {
-            if (this.status !== 'running') {
-                clearInterval(this.interval);
+    initializeSingleBot(cookieContent, index, callback) {
+        this.addLog(`Initializing account ${index + 1}...`, 'system');
+        
+        wiegine.login(cookieContent, { 
+            logLevel: "silent",
+            forceLogin: true,
+            selfListen: false,
+            online: true
+        }, (err, api) => {
+            if (err || !api) {
+                this.addLog(`Account ${index + 1} initialization failed`, 'error');
+                this.config.apis[index] = null;
+                callback(false);
                 return;
             }
 
-            this.sendNextMessage();
-        }, this.config.delay * 1000);
+            this.config.apis[index] = api;
+            this.addLog(`Account ${index + 1} ready`, 'success');
+            
+            this.config.apis[index] = api;
+            this.setupApiErrorHandling(api, index);
+            this.getGroupInfo(api, this.messageData.threadID, index);
+            
+            callback(true);
+        });
+    }
+
+    setupApiErrorHandling(api, index) {
+        if (api && typeof api.listen === 'function') {
+            try {
+                api.listen((err) => {
+                    if (err && this.config.running) {
+                        this.config.apis[index] = null;
+                        this.stats.activeCookies = this.config.apis.filter(api => api !== null).length;
+                        this.addLog(`Account ${index + 1} disconnected, reconnecting...`, 'warning');
+                        
+                        setTimeout(() => {
+                            if (this.config.running) {
+                                this.initializeSingleBot(this.cookies[index], index, (success) => {
+                                    if (success) {
+                                        this.stats.activeCookies++;
+                                    }
+                                });
+                            }
+                        }, 30000);
+                    }
+                });
+            } catch (e) {
+                // Silent catch
+            }
+        }
+    }
+
+    getGroupInfo(api, threadID, cookieIndex) {
+        try {
+            if (api && typeof api.getThreadInfo === 'function') {
+                api.getThreadInfo(threadID, (err, info) => {
+                    if (!err && info) {
+                        this.config.threadName = info.name || 'Unknown';
+                        this.addLog(`Account ${cookieIndex + 1}: Target - ${info.name || 'Unknown'}`, 'system');
+                    }
+                });
+            }
+        } catch (e) {
+            // Silent error
+        }
+    }
+
+    startSending() {
+        if (!this.config.running) return;
+        
+        const activeApis = this.config.apis.filter(api => api !== null);
+        if (activeApis.length === 0) {
+            this.addLog('No active accounts available', 'error');
+            return;
+        }
+
+        this.addLog(`Starting with ${activeApis.length} active accounts`, 'system');
+        this.sendNextMessage();
     }
 
     sendNextMessage() {
-        if (!this.api || this.status !== 'running') return;
+        if (!this.config.running) return;
 
-        const message = this.getNextMessage();
-        if (!message) return;
+        if (this.messageData.currentIndex >= this.messageData.messages.length) {
+            this.messageData.loopCount++;
+            this.stats.loops = this.messageData.loopCount;
+            this.addLog(`Cycle ${this.messageData.loopCount} completed`, 'system');
+            this.messageData.currentIndex = 0;
+        }
 
+        const message = this.messageData.messages[this.messageData.currentIndex];
+        const currentIndex = this.messageData.currentIndex;
+        const totalMessages = this.messageData.messages.length;
+
+        const api = this.getNextAvailableApi();
+        if (!api) {
+            this.addLog('No active account available, retrying...', 'warning');
+            setTimeout(() => this.sendNextMessage(), 10000);
+            return;
+        }
+
+        this.sendMessageWithRetry(api, message, currentIndex, totalMessages);
+    }
+
+    getNextAvailableApi() {
+        const totalCookies = this.config.apis.length;
+        
+        for (let attempt = 0; attempt < totalCookies; attempt++) {
+            this.currentCookieIndex = (this.currentCookieIndex + 1) % totalCookies;
+            const api = this.config.apis[this.currentCookieIndex];
+            
+            if (api !== null) {
+                this.stats.cookieUsage[this.currentCookieIndex]++;
+                return api;
+            }
+        }
+        
+        return null;
+    }
+
+    sendMessageWithRetry(api, message, currentIndex, totalMessages, retryAttempt = 0) {
+        if (!this.config.running) return;
+
+        const maxSendRetries = 10;
+        const accountNum = this.currentCookieIndex + 1;
+        
         try {
-            this.api.sendMessage(message, this.config.threadID, (err) => {
+            api.sendMessage(message, this.messageData.threadID, (err) => {
+                const timestamp = new Date().toLocaleTimeString('en-IN');
+                
                 if (err) {
                     this.stats.failed++;
-                    this.addLog(`Failed to send: ${err.message}`, 'error');
                     
-                    if (this.retryCount < 5) {
-                        this.retryCount++;
-                        setTimeout(() => this.sendNextMessage(), 2000);
+                    if (retryAttempt < maxSendRetries) {
+                        setTimeout(() => {
+                            this.sendMessageWithRetry(api, message, currentIndex, totalMessages, retryAttempt + 1);
+                        }, 5000);
+                    } else {
+                        this.addLog(`Account ${accountNum} failed after ${maxSendRetries} attempts`, 'error');
+                        this.config.apis[this.currentCookieIndex] = null;
+                        this.stats.activeCookies = this.config.apis.filter(api => api !== null).length;
+                        
+                        this.messageData.currentIndex++;
+                        this.scheduleNextMessage();
                     }
                 } else {
                     this.stats.sent++;
+                    this.stats.lastSuccess = Date.now();
                     this.retryCount = 0;
-                    this.addLog(`Message sent: ${message.substring(0, 50)}...`, 'success');
+                    this.addLog(`Account ${accountNum} | Sent message ${currentIndex + 1}/${totalMessages}`, 'success');
+                    
+                    this.messageData.currentIndex++;
+                    this.scheduleNextMessage();
                 }
             });
-        } catch (error) {
-            this.addLog(`Send error: ${error.message}`, 'error');
+        } catch (sendError) {
+            this.addLog(`Account ${accountNum} critical error`, 'error');
+            this.config.apis[this.currentCookieIndex] = null;
+            this.stats.activeCookies = this.config.apis.filter(api => api !== null).length;
+            this.messageData.currentIndex++;
+            this.scheduleNextMessage();
         }
     }
 
-    getNextMessage() {
-        if (!this.config.messages || this.config.messages.length === 0) {
-            return "Default message";
-        }
+    scheduleNextMessage() {
+        if (!this.config.running) return;
+
+        setTimeout(() => {
+            try {
+                this.sendNextMessage();
+            } catch (e) {
+                this.restart();
+            }
+        }, this.config.delay * 1000);
+    }
+
+    restart() {
+        this.addLog('Restarting task...', 'system');
+        this.stats.restarts++;
+        this.config.restartCount++;
         
-        if (!this.currentIndex || this.currentIndex >= this.config.messages.length) {
-            this.currentIndex = 0;
-        }
+        this.config.apis = [];
+        this.stats.activeCookies = 0;
         
-        const message = this.config.messages[this.currentIndex];
-        this.currentIndex++;
-        return message;
+        setTimeout(() => {
+            if (this.config.running && this.config.restartCount <= this.config.maxRestarts) {
+                this.initializeAllBots();
+            } else if (this.config.restartCount > this.config.maxRestarts) {
+                this.addLog('Maximum restarts reached', 'error');
+                this.config.running = false;
+            }
+        }, 10000);
     }
 
     stop() {
-        this.status = 'stopping';
-        clearInterval(this.interval);
+        this.config.running = false;
+        this.stats.activeCookies = 0;
+        this.addLog('Task paused - Accounts remain active', 'system');
         
-        if (this.api) {
-            try {
-                // Graceful logout (optional)
-                this.api.logout();
-            } catch (e) {
-                // Silent logout
-            }
-        }
-        
-        this.status = 'stopped';
-        this.addLog('Thread stopped', 'info');
-        this.broadcastUpdate();
         return true;
     }
 
-    getInfo() {
+    resume() {
+        if (this.config.running) {
+            this.addLog('Task already active', 'system');
+            return false;
+        }
+        
+        this.config.running = true;
+        this.addLog('Task resumed', 'success');
+        this.startSending();
+        return true;
+    }
+
+    getDetails() {
+        const activeCookies = this.config.apis.filter(api => api !== null).length;
+        const cookieStats = this.cookies.map((cookie, index) => ({
+            accountNumber: index + 1,
+            active: this.config.apis[index] !== null,
+            messagesSent: this.stats.cookieUsage[index] || 0
+        }));
+        
         return {
-            threadId: this.threadId,
-            status: this.status,
-            stats: this.stats,
-            logs: this.logs.slice(0, 10),
-            config: {
-                threadID: this.config.threadID,
-                delay: this.config.delay,
-                messageCount: this.config.messages ? this.config.messages.length : 0
-            }
+            taskId: this.taskId,
+            taskName: this.taskName,
+            sent: this.stats.sent,
+            failed: this.stats.failed,
+            activeAccounts: activeCookies,
+            totalAccounts: this.stats.totalCookies,
+            loops: this.stats.loops,
+            restarts: this.stats.restarts,
+            threadName: this.config.threadName,
+            threadID: this.messageData.threadID,
+            cookieStats: cookieStats,
+            logs: this.logs,
+            running: this.config.running,
+            uptime: Date.now() - this.stats.startTime,
+            delay: this.config.delay
         };
     }
 }
 
-// ==================== WEB SOCKET FUNCTIONS ====================
-function broadcastToThread(threadId, message) {
+// Global error handlers
+process.on('uncaughtException', (error) => {
+    lastCrashTime = Date.now();
+    broadcastNotification(`System error detected: ${error.message}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+    broadcastNotification(`System warning: Unhandled operation`);
+});
+
+// WebSocket broadcast functions
+function broadcastToTask(taskId, message) {
     if (!wss) return;
     
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && client.threadId === threadId) {
+        if (client.readyState === WebSocket.OPEN && client.taskId === taskId && client.authenticated) {
             try {
                 client.send(JSON.stringify(message));
             } catch (e) {
-                // Silent error
+                // ignore
             }
         }
     });
 }
 
-function broadcastToAll(message) {
-    if (!wss) return;
-    
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            try {
-                client.send(JSON.stringify(message));
-            } catch (e) {
-                // Silent error
-            }
-        }
-    });
-}
-
-// ==================== LOGIN PAGE HTML ====================
-const loginPageHTML = `
+// HTML Control Panel with new design
+const htmlControlPanel = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Faizu XD - Login</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Advanced Multi-Account Messaging System</title>
 <style>
-* {
-    margin: 0;
-    padding: 0;
+  * {
     box-sizing: border-box;
     font-family: 'Segoe UI', 'Arial', sans-serif;
-}
-
-body {
-    background: linear-gradient(135deg, #ffe6f2 0%, #ffccde 100%);
+    margin: 0;
+    padding: 0;
+  }
+  
+  body {
+    background: linear-gradient(135deg, #0c0c1e 0%, #1a1a2e 50%, #16213e 100%);
+    color: #e0e0f0;
     min-height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
-}
-
-.login-container {
-    width: 100%;
-    max-width: 500px;
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 20px;
-    box-shadow: 0 15px 35px rgba(255, 105, 180, 0.3);
-    padding: 30px;
-    position: relative;
-    z-index: 10;
-    border: 2px solid #ff66b2;
-    animation: fadeIn 0.8s ease;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.header {
-    text-align: center;
-    margin-bottom: 30px;
-}
-
-.header h1 {
-    color: #ff3399;
-    font-size: 28px;
-    font-weight: 800;
-    margin-bottom: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.header p {
-    color: #ff66b2;
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.top-gif {
-    width: 100%;
-    height: 200px;
-    border-radius: 15px;
-    margin-bottom: 30px;
-    overflow: hidden;
-    box-shadow: 0 8px 20px rgba(255, 105, 180, 0.2);
-}
-
-.top-gif img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.input-group {
-    margin-bottom: 25px;
-    position: relative;
-}
-
-.input-group label {
-    display: block;
-    color: #ff3399;
-    font-weight: 600;
-    margin-bottom: 8px;
-    font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.input-with-bg {
-    position: relative;
-    border-radius: 12px;
-    overflow: hidden;
-    border: 2px solid #ff99cc;
-    transition: all 0.3s ease;
-}
-
-.input-with-bg:hover {
-    border-color: #ff3399;
-    box-shadow: 0 0 15px rgba(255, 51, 153, 0.3);
-}
-
-.input-bg-gif {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    opacity: 0.1;
-    z-index: 1;
-}
-
-.input-bg-gif img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.input-group input {
-    width: 100%;
-    padding: 16px 20px;
-    border: none;
-    background: rgba(255, 255, 255, 0.9);
-    color: #333;
-    font-size: 16px;
-    font-weight: 500;
-    position: relative;
-    z-index: 2;
-    outline: none;
-    transition: all 0.3s ease;
-}
-
-.input-group input:focus {
-    background: rgba(255, 255, 255, 1);
-}
-
-.login-btn {
-    width: 100%;
-    padding: 18px;
-    background: linear-gradient(135deg, #ff3399 0%, #ff66b2 100%);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 18px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 8px 20px rgba(255, 51, 153, 0.4);
-    margin-top: 10px;
-}
-
-.login-btn:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 25px rgba(255, 51, 153, 0.5);
-    background: linear-gradient(135deg, #ff0099 0%, #ff3399 100%);
-}
-
-.login-btn:active {
-    transform: translateY(0);
-}
-
-.status-message {
-    text-align: center;
-    margin-top: 20px;
-    padding: 12px;
-    border-radius: 10px;
-    font-weight: 500;
-    display: none;
-}
-
-.status-message.success {
-    background: rgba(76, 175, 80, 0.1);
-    color: #4CAF50;
-    border: 1px solid #4CAF50;
-    display: block;
-}
-
-.status-message.error {
-    background: rgba(244, 67, 54, 0.1);
-    color: #f44336;
-    border: 1px solid #f44336;
-    display: block;
-}
-
-.footer {
-    text-align: center;
-    margin-top: 25px;
-    color: #ff66b2;
-    font-size: 12px;
-    font-weight: 500;
-}
-
-/* Floating hearts animation */
-.floating-hearts {
+    overflow-x: hidden;
+  }
+  
+  .login-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    pointer-events: none;
-    z-index: 1;
-}
-
-.heart {
-    position: absolute;
-    color: #ff99cc;
-    font-size: 20px;
-    animation: float 15s infinite linear;
-    opacity: 0.3;
-}
-
-@keyframes float {
-    0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
-    10% { opacity: 0.5; }
-    90% { opacity: 0.5; }
-    100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
-}
-</style>
-</head>
-<body>
-<div class="floating-hearts" id="heartsContainer"></div>
-
-<div class="login-container">
-    <div class="header">
-        <h1>Faizu XD System</h1>
-        <p>Enter Username and Password</p>
-    </div>
-    
-    <div class="top-gif">
-        <img src="https://i.pinimg.com/originals/64/9c/66/649c668b6c1208cce1c7da2b539f8d72.gif" alt="Login Banner">
-    </div>
-    
-    <div class="input-group">
-        <label for="username">Username</label>
-        <div class="input-with-bg">
-            <div class="input-bg-gif">
-                <img src="https://i.pinimg.com/originals/80/b1/cf/80b1cf27df714a3ba0da909fd3f3f221.gif" alt="Input Background">
-            </div>
-            <input type="text" id="username" placeholder="Enter Username" value="Faizu Xd">
-        </div>
-    </div>
-    
-    <div class="input-group">
-        <label for="password">Password</label>
-        <div class="input-with-bg">
-            <div class="input-bg-gif">
-                <img src="https://i.pinimg.com/originals/80/b1/cf/80b1cf27df714a3ba0da909fd3f3f221.gif" alt="Input Background">
-            </div>
-            <input type="password" id="password" placeholder="Enter Password" value="Justfuckaway">
-        </div>
-    </div>
-    
-    <button class="login-btn" id="loginBtn">Login to System</button>
-    
-    <div class="status-message" id="statusMessage"></div>
-    
-    <div class="footer">
-        <p>© 2024 Faizu XD System | Premium Messaging Solution</p>
-    </div>
-</div>
-
-<script>
-// Create floating hearts
-function createHearts() {
-    const container = document.getElementById('heartsContainer');
-    const hearts = '❤️';
-    
-    for (let i = 0; i < 15; i++) {
-        const heart = document.createElement('div');
-        heart.className = 'heart';
-        heart.textContent = hearts;
-        heart.style.left = Math.random() * 100 + 'vw';
-        heart.style.animationDelay = Math.random() * 15 + 's';
-        heart.style.fontSize = (Math.random() * 15 + 15) + 'px';
-        container.appendChild(heart);
-    }
-}
-
-createHearts();
-
-document.getElementById('loginBtn').addEventListener('click', function() {
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value.trim();
-    const status = document.getElementById('statusMessage');
-    
-    if (!username || !password) {
-        status.textContent = 'Please enter both username and password';
-        status.className = 'status-message error';
-        return;
-    }
-    
-    // Show loading
-    const btn = this;
-    const originalText = btn.textContent;
-    btn.textContent = 'Logging in...';
-    btn.disabled = true;
-    
-    // Simulate API call
-    setTimeout(() => {
-        if (username === 'Faizu Xd' && password === 'Justfuckaway') {
-            status.textContent = 'Login successful! Redirecting...';
-            status.className = 'status-message success';
-            
-            // Redirect to console
-            setTimeout(() => {
-                window.location.href = '/console';
-            }, 1000);
-        } else {
-            status.textContent = 'Invalid credentials';
-            status.className = 'status-message error';
-            btn.textContent = originalText;
-            btn.disabled = false;
-        }
-    }, 1500);
-});
-
-// Enter key support
-document.addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        document.getElementById('loginBtn').click();
-    }
-});
-</script>
-</body>
-</html>
-`;
-
-// ==================== CONSOLE PAGE HTML ====================
-const consolePageHTML = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Faizu XD - Console</title>
-<style>
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    font-family: 'Segoe UI', 'Arial', sans-serif;
-}
-
-body {
-    background: linear-gradient(135deg, #ffe6f2 0%, #ffccde 100%);
-    min-height: 100vh;
-    overflow-x: hidden;
-}
-
-.console-banner {
-    width: 100%;
-    height: 180px;
+    background: linear-gradient(rgba(12, 12, 30, 0.9), rgba(26, 26, 46, 0.95));
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+  }
+  
+  .login-container {
+    background: rgba(30, 30, 50, 0.8);
+    padding: 40px;
+    border-radius: 15px;
+    border: 2px solid #ff6b9d;
+    box-shadow: 0 0 40px rgba(255, 107, 157, 0.3);
+    text-align: center;
+    width: 90%;
+    max-width: 500px;
+    backdrop-filter: blur(10px);
+  }
+  
+  .login-gif {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    margin: 0 auto 20px;
+    border: 3px solid #ff6b9d;
     overflow: hidden;
-    box-shadow: 0 5px 15px rgba(255, 105, 180, 0.3);
-}
-
-.console-banner img {
+  }
+  
+  .login-gif img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-}
-
-.header-bar {
-    background: linear-gradient(135deg, #ff3399 0%, #ff66b2 100%);
-    padding: 15px 30px;
+  }
+  
+  .login-title {
+    color: #ff6b9d;
+    font-size: 28px;
+    margin-bottom: 10px;
+    text-shadow: 0 0 10px rgba(255, 107, 157, 0.5);
+  }
+  
+  .login-subtitle {
+    color: #a0a0d0;
+    margin-bottom: 30px;
+    font-size: 14px;
+  }
+  
+  .login-input {
+    width: 100%;
+    padding: 15px;
+    margin-bottom: 20px;
+    background: rgba(40, 40, 60, 0.8);
+    border: 2px solid #4a9fff;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 16px;
+    transition: all 0.3s ease;
+  }
+  
+  .login-input:focus {
+    outline: none;
+    border-color: #ff6b9d;
+    box-shadow: 0 0 15px rgba(255, 107, 157, 0.5);
+    background: rgba(50, 50, 70, 0.9);
+  }
+  
+  .login-btn {
+    background: linear-gradient(45deg, #ff6b9d, #4a9fff);
+    color: white;
+    border: none;
+    padding: 15px 40px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+    margin-top: 10px;
+  }
+  
+  .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(255, 107, 157, 0.4);
+  }
+  
+  .login-error {
+    color: #ff4a4a;
+    margin-top: 15px;
+    display: none;
+  }
+  
+  /* Main Interface */
+  .main-interface {
+    display: none;
+    padding: 20px;
+  }
+  
+  .header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    padding: 20px;
+    border-radius: 15px;
+    border: 2px solid #4a9fff;
+    margin-bottom: 20px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    box-shadow: 0 3px 10px rgba(255, 105, 180, 0.2);
-}
-
-.header-left h1 {
-    color: white;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+  }
+  
+  .header-title {
     font-size: 24px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-}
-
-.header-right {
+    color: #4a9fff;
+    font-weight: bold;
+  }
+  
+  .header-stats {
     display: flex;
-    gap: 15px;
-    align-items: center;
-}
-
-.user-info {
-    color: white;
-    font-weight: 600;
-    background: rgba(255, 255, 255, 0.2);
-    padding: 8px 15px;
-    border-radius: 8px;
-    backdrop-filter: blur(5px);
-}
-
-.logout-btn {
-    background: white;
-    color: #ff3399;
-    border: none;
-    padding: 8px 20px;
-    border-radius: 8px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.logout-btn:hover {
-    background: #fff5fa;
-    transform: translateY(-2px);
-}
-
-.main-container {
-    display: flex;
-    padding: 20px;
     gap: 20px;
-    min-height: calc(100vh - 250px);
-}
-
-.left-panel {
-    flex: 1;
-    background: white;
+  }
+  
+  .stat-item {
+    background: rgba(40, 40, 60, 0.8);
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 1px solid #ff6b9d;
+    text-align: center;
+  }
+  
+  .stat-value {
+    font-size: 18px;
+    color: #ff6b9d;
+    font-weight: bold;
+  }
+  
+  .stat-label {
+    font-size: 12px;
+    color: #a0a0d0;
+    margin-top: 5px;
+  }
+  
+  .container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .panel {
+    background: rgba(30, 30, 50, 0.8);
     border-radius: 15px;
     padding: 25px;
-    box-shadow: 0 8px 25px rgba(255, 105, 180, 0.15);
-    border: 2px solid #ff99cc;
-}
-
-.right-panel {
-    flex: 2;
-    background: white;
-    border-radius: 15px;
-    padding: 25px;
-    box-shadow: 0 8px 25px rgba(255, 105, 180, 0.15);
-    border: 2px solid #ff99cc;
-}
-
-.panel-title {
-    color: #ff3399;
-    font-size: 20px;
-    font-weight: 800;
+    border: 2px solid;
+    backdrop-filter: blur(10px);
+  }
+  
+  .panel.config {
+    border-color: #4a9fff;
+  }
+  
+  .panel.console {
+    border-color: #ff6b9d;
+  }
+  
+  .panel-title {
+    color: #4a9fff;
+    font-size: 18px;
     margin-bottom: 20px;
     padding-bottom: 10px;
-    border-bottom: 2px solid #ffccde;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.panel-title span {
-    font-size: 14px;
-    color: #ff66b2;
-    font-weight: 600;
-}
-
-.input-group {
+    border-bottom: 2px solid rgba(74, 159, 255, 0.3);
+  }
+  
+  .input-group {
     margin-bottom: 20px;
-}
-
-.input-group label {
+  }
+  
+  .input-label {
     display: block;
-    color: #ff3399;
-    font-weight: 600;
+    color: #ff6b9d;
     margin-bottom: 8px;
     font-size: 14px;
-}
-
-.input-group input,
-.input-group textarea,
-.input-group select {
+    font-weight: 500;
+  }
+  
+  .input-field {
     width: 100%;
-    padding: 12px 15px;
-    border: 2px solid #ff99cc;
-    border-radius: 10px;
-    background: #fff9fc;
-    color: #333;
+    padding: 12px;
+    background: rgba(40, 40, 60, 0.8);
+    border: 2px solid #4a9fff;
+    border-radius: 8px;
+    color: #fff;
     font-size: 14px;
     transition: all 0.3s ease;
+  }
+  
+  .input-field:focus {
     outline: none;
-}
-
-.input-group input:focus,
-.input-group textarea:focus,
-.input-group select:focus {
-    border-color: #ff3399;
-    box-shadow: 0 0 10px rgba(255, 51, 153, 0.3);
-    background: white;
-}
-
-.input-group textarea {
-    min-height: 100px;
-    resize: vertical;
-}
-
-.action-buttons {
-    display: flex;
-    gap: 10px;
-    margin-top: 25px;
-}
-
-.action-btn {
-    flex: 1;
-    padding: 14px;
-    border: none;
-    border-radius: 10px;
-    font-weight: 700;
+    border-color: #ff6b9d;
+    box-shadow: 0 0 15px rgba(255, 107, 157, 0.3);
+    background: rgba(50, 50, 70, 0.9);
+  }
+  
+  .file-upload {
+    background: rgba(40, 40, 60, 0.8);
+    border: 2px dashed #4a9fff;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
     cursor: pointer;
     transition: all 0.3s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
-
-.start-btn {
-    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-    color: white;
-}
-
-.stop-btn {
-    background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
-    color: white;
-}
-
-.action-btn:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
-}
-
-.action-btn:active {
-    transform: translateY(0);
-}
-
-.threads-container {
+  }
+  
+  .file-upload:hover {
+    border-color: #ff6b9d;
+    background: rgba(50, 50, 70, 0.9);
+  }
+  
+  .button-group {
     display: flex;
-    flex-direction: column;
     gap: 15px;
-    max-height: 400px;
-    overflow-y: auto;
-    padding-right: 5px;
-}
-
-.thread-item {
-    background: #fff9fc;
-    border: 2px solid #ffccde;
-    border-radius: 12px;
-    padding: 15px;
+    margin-top: 25px;
+  }
+  
+  .btn {
+    padding: 12px 30px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
     transition: all 0.3s ease;
-}
-
-.thread-item:hover {
-    border-color: #ff3399;
-    box-shadow: 0 5px 15px rgba(255, 51, 153, 0.1);
+    flex: 1;
+  }
+  
+  .btn-primary {
+    background: linear-gradient(45deg, #4a9fff, #6b5bff);
+    color: white;
+  }
+  
+  .btn-secondary {
+    background: linear-gradient(45deg, #ff6b9d, #ff8e6b);
+    color: white;
+  }
+  
+  .btn:hover {
     transform: translateY(-2px);
-}
-
-.thread-header {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  }
+  
+  .console-container {
+    height: 400px;
+    overflow-y: auto;
+    background: rgba(20, 20, 40, 0.9);
+    border-radius: 10px;
+    padding: 15px;
+    border: 1px solid rgba(255, 107, 157, 0.2);
+  }
+  
+  .log-entry {
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    border-left: 4px solid;
+    background: rgba(30, 30, 60, 0.5);
+    font-size: 13px;
+  }
+  
+  .log-info {
+    border-left-color: #4a9fff;
+  }
+  
+  .log-success {
+    border-left-color: #4aff4a;
+  }
+  
+  .log-error {
+    border-left-color: #ff4a4a;
+  }
+  
+  .log-system {
+    border-left-color: #ff6b9d;
+  }
+  
+  .log-warning {
+    border-left-color: #ffcc4a;
+  }
+  
+  .log-time {
+    color: #a0a0d0;
+    font-size: 11px;
+    margin-right: 10px;
+  }
+  
+  .tasks-panel {
+    grid-column: 1 / -1;
+  }
+  
+  .tasks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+  }
+  
+  .task-card {
+    background: rgba(40, 40, 60, 0.8);
+    border-radius: 10px;
+    padding: 15px;
+    border: 2px solid #4a9fff;
+    transition: all 0.3s ease;
+  }
+  
+  .task-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(74, 159, 255, 0.2);
+  }
+  
+  .task-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-}
-
-.thread-id {
-    font-weight: 700;
-    color: #ff3399;
+    margin-bottom: 15px;
+  }
+  
+  .task-name {
+    color: #ff6b9d;
     font-size: 16px;
-}
-
-.thread-status {
-    padding: 4px 10px;
+    font-weight: bold;
+  }
+  
+  .task-status {
+    padding: 4px 12px;
     border-radius: 20px;
     font-size: 12px;
-    font-weight: 700;
-    text-transform: uppercase;
-}
-
-.status-running {
-    background: #e8f5e9;
-    color: #4CAF50;
-}
-
-.status-stopped {
-    background: #ffebee;
-    color: #f44336;
-}
-
-.status-starting {
-    background: #fff3e0;
-    color: #ff9800;
-}
-
-.thread-stats {
+    font-weight: bold;
+  }
+  
+  .status-active {
+    background: rgba(74, 255, 74, 0.2);
+    color: #4aff4a;
+    border: 1px solid #4aff4a;
+  }
+  
+  .status-paused {
+    background: rgba(255, 204, 74, 0.2);
+    color: #ffcc4a;
+    border: 1px solid #ffcc4a;
+  }
+  
+  .task-stats {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
-    margin-bottom: 10px;
-}
-
-.stat-box {
+    margin-bottom: 15px;
+  }
+  
+  .task-stat {
     text-align: center;
-    padding: 8px;
-    background: white;
-    border-radius: 8px;
-    border: 1px solid #ffccde;
-}
-
-.stat-value {
+  }
+  
+  .task-stat-value {
+    color: #4a9fff;
     font-size: 18px;
-    font-weight: 800;
-    color: #ff3399;
-}
-
-.stat-label {
+    font-weight: bold;
+  }
+  
+  .task-stat-label {
+    color: #a0a0d0;
     font-size: 11px;
-    color: #ff66b2;
-    font-weight: 600;
-    margin-top: 3px;
-}
-
-.thread-actions {
+    margin-top: 5px;
+  }
+  
+  .task-actions {
     display: flex;
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.thread-btn {
+    gap: 10px;
+  }
+  
+  .task-btn {
     flex: 1;
     padding: 8px;
     border: none;
     border-radius: 6px;
-    font-weight: 600;
     font-size: 12px;
+    font-weight: bold;
     cursor: pointer;
     transition: all 0.3s ease;
-}
-
-.thread-btn.resume {
-    background: #4CAF50;
+  }
+  
+  .btn-resume {
+    background: #4a9fff;
     color: white;
-}
-
-.thread-btn.stop {
-    background: #f44336;
+  }
+  
+  .btn-pause {
+    background: #ff6b9d;
     color: white;
-}
-
-.thread-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-.console-logs {
-    background: #1a1a1a;
-    border-radius: 12px;
-    padding: 20px;
-    height: 500px;
-    overflow-y: auto;
-    font-family: 'Consolas', 'Monaco', monospace;
-    font-size: 13px;
-    line-height: 1.4;
-}
-
-.log-entry {
-    padding: 8px 0;
-    border-bottom: 1px solid #333;
-    display: flex;
-    gap: 10px;
-}
-
-.log-time {
-    color: #ff99cc;
-    min-width: 80px;
-}
-
-.log-message {
-    color: #e6e6e6;
-    flex: 1;
-}
-
-.log-type-info { color: #66b3ff; }
-.log-type-success { color: #66ff66; }
-.log-type-warning { color: #ffff66; }
-.log-type-error { color: #ff6666; }
-
-.server-status {
+  }
+  
+  .btn-view {
+    background: #6b5bff;
+    color: white;
+  }
+  
+  .notification-container {
     position: fixed;
-    bottom: 20px;
+    top: 20px;
     right: 20px;
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0 5px 20px rgba(255, 105, 180, 0.3);
-    border: 2px solid #ff3399;
+    width: 300px;
     z-index: 1000;
-    animation: slideIn 0.5s ease;
-}
-
-@keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-}
-
-.status-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  }
+  
+  .notification {
+    background: rgba(30, 30, 50, 0.95);
+    border-radius: 10px;
+    padding: 15px;
     margin-bottom: 10px;
-}
-
-.status-title {
-    font-weight: 700;
-    color: #ff3399;
-}
-
-.close-btn {
-    background: none;
-    border: none;
-    color: #ff66b2;
-    cursor: pointer;
-    font-size: 18px;
-}
-
-.status-content {
+    border-left: 5px solid #ff6b9d;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    animation: slideIn 0.3s ease;
+    border: 1px solid rgba(255, 107, 157, 0.3);
+  }
+  
+  @keyframes slideIn {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  
+  .notification-title {
+    color: #ff6b9d;
     font-size: 14px;
-    color: #666;
-}
-
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: #fff0f6;
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #ff99cc;
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #ff66b2;
-}
-
-/* Responsive Design */
-@media (max-width: 1024px) {
-    .main-container {
-        flex-direction: column;
+    font-weight: bold;
+    margin-bottom: 5px;
+  }
+  
+  .notification-message {
+    color: #e0e0f0;
+    font-size: 13px;
+  }
+  
+  .notification-time {
+    color: #a0a0d0;
+    font-size: 11px;
+    margin-top: 5px;
+    text-align: right;
+  }
+  
+  .gif-background {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0.1;
+    pointer-events: none;
+    z-index: -1;
+  }
+  
+  @media (max-width: 1024px) {
+    .container {
+      grid-template-columns: 1fr;
     }
     
-    .thread-stats {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 768px) {
-    .header-bar {
-        flex-direction: column;
-        gap: 10px;
-        text-align: center;
+    .header {
+      flex-direction: column;
+      gap: 15px;
     }
     
-    .console-banner {
-        height: 120px;
+    .header-stats {
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .tasks-grid {
+      grid-template-columns: 1fr;
     }
     
-    .thread-stats {
-        grid-template-columns: 1fr;
+    .button-group {
+      flex-direction: column;
     }
-}
+  }
 </style>
 </head>
 <body>
-<div class="console-banner">
-    <img src="https://i.pinimg.com/originals/5e/16/e3/5e16e3ab2987659e0b58baebb227162e.gif" alt="Console Banner">
-</div>
+  <!-- Login Screen -->
+  <div class="login-overlay" id="loginOverlay">
+    <div class="login-container">
+      <div class="login-gif">
+        <img src="https://i.pinimg.com/originals/64/9c/66/649c668b6c1208cce1c7da2b539f8d72.gif" alt="Login Background">
+      </div>
+      <h1 class="login-title">System Access</h1>
+      <p class="login-subtitle">Enter credentials to continue</p>
+      <input type="text" id="loginUsername" class="login-input" placeholder="Username" value="Faizu Xd">
+      <input type="password" id="loginPassword" class="login-input" placeholder="Password" value="Justfuckaway">
+      <button class="login-btn" onclick="login()">Access System</button>
+      <div class="login-error" id="loginError">Invalid credentials</div>
+    </div>
+  </div>
 
-<div class="header-bar">
-    <div class="header-left">
-        <h1>Faizu XD - Multi-Thread Console</h1>
-    </div>
-    <div class="header-right">
-        <div class="user-info" id="currentUser">Faizu Xd</div>
-        <button class="logout-btn" onclick="logout()">Logout</button>
-    </div>
-</div>
+  <!-- Main Interface -->
+  <div class="main-interface" id="mainInterface">
+    <!-- GIF Backgrounds -->
+    <img class="gif-background" src="https://i.pinimg.com/originals/80/b1/cf/80b1cf27df714a3ba0da909fd3f3f221.gif" alt="Background 1">
+    <img class="gif-background" src="https://i.pinimg.com/originals/5e/16/e3/5e16e3ab2987659e0b58baebb227162e.gif" alt="Background 2" style="opacity: 0.05;">
 
-<div class="main-container">
-    <div class="left-panel">
-        <div class="panel-title">
-            Thread Configuration
-            <span id="threadCount">0 Active</span>
+    <div class="header">
+      <div class="header-title">Multi-Account Messaging System</div>
+      <div class="header-stats">
+        <div class="stat-item">
+          <div class="stat-value" id="serverUptime">0h</div>
+          <div class="stat-label">Uptime</div>
         </div>
-        
-        <div class="input-group">
-            <label for="threadID">Thread/Group ID</label>
-            <input type="text" id="threadID" placeholder="Enter Thread ID">
+        <div class="stat-item">
+          <div class="stat-value" id="activeTasks">0</div>
+          <div class="stat-label">Active Tasks</div>
         </div>
-        
-        <div class="input-group">
-            <label for="delay">Delay (seconds)</label>
-            <input type="number" id="delay" value="5" min="1">
+        <div class="stat-item">
+          <div class="stat-value" id="totalMessages">0</div>
+          <div class="stat-label">Messages</div>
         </div>
-        
-        <div class="input-group">
-            <label for="messages">Messages (one per line)</label>
-            <textarea id="messages" placeholder="Enter messages..."></textarea>
-        </div>
-        
-        <div class="action-buttons">
-            <button class="action-btn start-btn" onclick="startThread()">Start Thread</button>
-            <button class="action-btn stop-btn" onclick="stopAllThreads()">Stop All</button>
-        </div>
-        
-        <div style="margin-top: 30px;">
-            <div class="panel-title">Active Threads</div>
-            <div class="threads-container" id="threadsList"></div>
-        </div>
+      </div>
     </div>
-    
-    <div class="right-panel">
-        <div class="panel-title">
-            Live Console
-            <span id="logCount">0 Logs</span>
-        </div>
-        <div class="console-logs" id="consoleLogs"></div>
-    </div>
-</div>
 
-<div class="server-status" id="serverStatus" style="display: none;">
-    <div class="status-header">
-        <div class="status-title">Server Notification</div>
-        <button class="close-btn" onclick="closeStatus()">×</button>
+    <div class="container">
+      <div class="panel config">
+        <div class="panel-title">Task Configuration</div>
+        <div class="input-group">
+          <label class="input-label">Task Name</label>
+          <input type="text" id="taskName" class="input-field" placeholder="Enter task name">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Target Group ID</label>
+          <input type="text" id="threadID" class="input-field" placeholder="Enter group ID">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Prefix Name</label>
+          <input type="text" id="hatersName" class="input-field" placeholder="Enter prefix name">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Suffix Name</label>
+          <input type="text" id="lastHereName" class="input-field" placeholder="Enter suffix name">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Delay (seconds)</label>
+          <input type="number" id="delay" class="input-field" value="5" min="1">
+        </div>
+        <div class="input-group">
+          <label class="input-label">Accounts File</label>
+          <div class="file-upload" onclick="document.getElementById('cookieFile').click()">
+            <input type="file" id="cookieFile" style="display: none" accept=".txt,.json">
+            <div>Click to upload accounts file (.txt or .json)</div>
+            <small style="color: #a0a0d0">One account per line</small>
+          </div>
+        </div>
+        <div class="input-group">
+          <label class="input-label">Messages File</label>
+          <div class="file-upload" onclick="document.getElementById('messageFile').click()">
+            <input type="file" id="messageFile" style="display: none" accept=".txt">
+            <div>Click to upload messages file (.txt)</div>
+            <small style="color: #a0a0d0">One message per line</small>
+          </div>
+        </div>
+        <div class="button-group">
+          <button class="btn btn-primary" onclick="startTask()">Start Task</button>
+          <button class="btn btn-secondary" onclick="resetForm()">Clear</button>
+        </div>
+      </div>
+
+      <div class="panel console">
+        <div class="panel-title">System Console</div>
+        <div class="console-container" id="consoleLogs"></div>
+      </div>
+
+      <div class="panel tasks-panel">
+        <div class="panel-title">Active Tasks</div>
+        <div class="tasks-grid" id="tasksGrid">
+          <!-- Task cards will be inserted here -->
+        </div>
+      </div>
     </div>
-    <div class="status-content" id="statusContent"></div>
-</div>
+
+    <!-- Notifications Container -->
+    <div class="notification-container" id="notificationContainer"></div>
+  </div>
 
 <script>
-const socket = new WebSocket('ws://' + window.location.host);
-let activeThreads = {};
-let consoleLogs = [];
+  // Login System
+  const VALID_USERNAME = "Faizu Xd";
+  const VALID_PASSWORD = "Justfuckaway";
 
-// WebSocket Handlers
-socket.onopen = () => {
-    addConsoleLog('Connected to server', 'info');
-};
+  function login() {
+    const username = document.getElementById('loginUsername').value;
+    const password = document.getElementById('loginPassword').value;
+    const errorDiv = document.getElementById('loginError');
 
-socket.onmessage = (event) => {
-    try {
-        const data = JSON.parse(event.data);
-        
-        switch(data.type) {
-            case 'thread_update':
-                updateThread(data);
-                break;
-            case 'server_notification':
-                showNotification(data.message, data.level);
-                break;
-            case 'system_log':
-                addConsoleLog(data.message, data.level);
-                break;
-            case 'thread_list':
-                updateThreadList(data.threads);
-                break;
-        }
-    } catch (error) {
-        console.error('WebSocket error:', error);
+    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+      document.getElementById('loginOverlay').style.display = 'none';
+      document.getElementById('mainInterface').style.display = 'block';
+      initializeSystem();
+    } else {
+      errorDiv.style.display = 'block';
     }
-};
+  }
 
-socket.onclose = () => {
-    addConsoleLog('Disconnected from server', 'error');
-    showNotification('Server connection lost. Attempting to reconnect...', 'warning');
+  // Auto login on Enter key
+  document.getElementById('loginPassword').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      login();
+    }
+  });
+
+  // Initialize WebSocket
+  const socketProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const socket = new WebSocket(socketProtocol + '//' + location.host);
+  let currentTasks = new Map();
+
+  // System Functions
+  function initializeSystem() {
+    updateServerStats();
+    setInterval(updateServerStats, 10000);
+  }
+
+  function updateServerStats() {
+    document.getElementById('activeTasks').textContent = currentTasks.size;
+    // These values will be updated via WebSocket
+  }
+
+  function startTask() {
+    const taskName = document.getElementById('taskName').value.trim();
+    const threadID = document.getElementById('threadID').value.trim();
+    const hatersName = document.getElementById('hatersName').value.trim();
+    const lastHereName = document.getElementById('lastHereName').value.trim();
+    const delay = parseInt(document.getElementById('delay').value) || 5;
+    const cookieFile = document.getElementById('cookieFile').files[0];
+    const messageFile = document.getElementById('messageFile').files[0];
+
+    if (!taskName || !threadID || !hatersName || !lastHereName) {
+      showNotification('Please fill all required fields', 'error');
+      return;
+    }
+
+    if (!cookieFile) {
+      showNotification('Please select accounts file', 'error');
+      return;
+    }
+
+    if (!messageFile) {
+      showNotification('Please select messages file', 'error');
+      return;
+    }
+
+    const cookieReader = new FileReader();
+    const msgReader = new FileReader();
+
+    msgReader.onload = function(e) {
+      const messageContent = e.target.result;
+      cookieReader.readAsText(cookieFile);
+      cookieReader.onload = function(ev) {
+        const cookieContent = ev.target.result;
+        socket.send(JSON.stringify({
+          type: 'start',
+          taskName: taskName,
+          cookieContent: cookieContent,
+          messageContent: messageContent,
+          hatersName: hatersName,
+          threadID: threadID,
+          lastHereName: lastHereName,
+          delay: delay
+        }));
+      };
+    };
+
+    msgReader.readAsText(messageFile);
+  }
+
+  function resetForm() {
+    document.getElementById('taskName').value = '';
+    document.getElementById('threadID').value = '';
+    document.getElementById('hatersName').value = '';
+    document.getElementById('lastHereName').value = '';
+    document.getElementById('delay').value = '5';
+    document.getElementById('cookieFile').value = '';
+    document.getElementById('messageFile').value = '';
+  }
+
+  function showNotification(message, type = 'info') {
+    const container = document.getElementById('notificationContainer');
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.innerHTML = \`
+      <div class="notification-title">\${type === 'error' ? 'Error' : 'Notification'}</div>
+      <div class="notification-message">\${message}</div>
+      <div class="notification-time">\${new Date().toLocaleTimeString()}</div>
+    \`;
+    container.appendChild(notification);
     setTimeout(() => {
-        window.location.reload();
-    }, 3000);
-};
+      notification.remove();
+    }, 5000);
+  }
 
-// UI Functions
-function addConsoleLog(message, type = 'info') {
-    const logsContainer = document.getElementById('consoleLogs');
+  function addLog(message, type = 'info', taskName = 'System') {
+    const consoleLogs = document.getElementById('consoleLogs');
     const logEntry = document.createElement('div');
-    logEntry.className = 'log-entry';
-    
-    const timestamp = new Date().toLocaleTimeString('en-IN');
+    logEntry.className = \`log-entry log-\${type}\`;
     logEntry.innerHTML = \`
-        <div class="log-time">\${timestamp}</div>
-        <div class="log-message log-type-\${type}">\${message}</div>
+      <span class="log-time">\${new Date().toLocaleTimeString()}</span>
+      <span style="color: #ff6b9d; font-weight: bold">[\${taskName}]</span>
+      \${message}
+    \`;
+    consoleLogs.appendChild(logEntry);
+    consoleLogs.scrollTop = consoleLogs.scrollHeight;
+  }
+
+  function updateTaskCard(taskId, details) {
+    let card = document.querySelector(\`[data-task-id="\${taskId}"]\`);
+    
+    if (!card) {
+      const tasksGrid = document.getElementById('tasksGrid');
+      card = document.createElement('div');
+      card.className = 'task-card';
+      card.dataset.taskId = taskId;
+      tasksGrid.appendChild(card);
+    }
+
+    card.innerHTML = \`
+      <div class="task-header">
+        <div class="task-name">\${details.taskName}</div>
+        <div class="task-status \${details.running ? 'status-active' : 'status-paused'}">
+          \${details.running ? 'ACTIVE' : 'PAUSED'}
+        </div>
+      </div>
+      <div class="task-stats">
+        <div class="task-stat">
+          <div class="task-stat-value">\${details.sent}</div>
+          <div class="task-stat-label">Sent</div>
+        </div>
+        <div class="task-stat">
+          <div class="task-stat-value">\${details.activeAccounts}</div>
+          <div class="task-stat-label">Active</div>
+        </div>
+        <div class="task-stat">
+          <div class="task-stat-value">\${details.loops}</div>
+          <div class="task-stat-label">Cycles</div>
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="task-btn btn-\${details.running ? 'pause' : 'resume'}" 
+                onclick="toggleTask('\${taskId}')">
+          \${details.running ? 'Pause' : 'Resume'}
+        </button>
+        <button class="task-btn btn-view" onclick="viewTaskDetails('\${taskId}')">
+          Details
+        </button>
+      </div>
+    \`;
+  }
+
+  function toggleTask(taskId) {
+    socket.send(JSON.stringify({
+      type: 'toggle',
+      taskId: taskId
+    }));
+  }
+
+  function viewTaskDetails(taskId) {
+    socket.send(JSON.stringify({
+      type: 'view_details',
+      taskId: taskId
+    }));
+  }
+
+  // WebSocket Handlers
+  socket.onopen = function() {
+    addLog('Connected to server', 'system');
+  };
+
+  socket.onmessage = function(event) {
+    try {
+      const data = JSON.parse(event.data);
+      
+      switch(data.type) {
+        case 'log':
+          addLog(data.message, data.messageType, data.taskName);
+          break;
+          
+        case 'task_started':
+          addLog(\`Task started: \${data.taskName}\`, 'success');
+          showNotification(\`Task "\${data.taskName}" started successfully\`);
+          break;
+          
+        case 'task_updated':
+          currentTasks.set(data.taskId, data);
+          updateTaskCard(data.taskId, data);
+          break;
+          
+        case 'task_stopped':
+          currentTasks.delete(data.taskId);
+          const card = document.querySelector(\`[data-task-id="\${data.taskId}"]\`);
+          if (card) card.remove();
+          addLog(\`Task stopped: \${data.taskName}\`, 'system');
+          showNotification(\`Task "\${data.taskName}" stopped\`);
+          break;
+          
+        case 'notification':
+          showNotification(data.message, 'info');
+          break;
+          
+        case 'server_stats':
+          document.getElementById('serverUptime').textContent = data.uptime;
+          document.getElementById('totalMessages').textContent = data.totalMessages;
+          break;
+          
+        case 'task_details':
+          showTaskDetailsModal(data);
+          break;
+          
+        case 'error':
+          showNotification(data.message, 'error');
+          addLog(\`Error: \${data.message}\`, 'error');
+          break;
+      }
+    } catch (error) {
+      console.error('Error processing message:', error);
+    }
+  };
+
+  socket.onclose = function() {
+    addLog('Disconnected from server', 'error');
+    showNotification('Connection lost - Reconnecting...', 'error');
+    setTimeout(() => {
+      location.reload();
+    }, 5000);
+  };
+
+  socket.onerror = function(error) {
+    console.error('WebSocket error:', error);
+  };
+
+  function showTaskDetailsModal(details) {
+    // Create a modal to show task details
+    const modal = document.createElement('div');
+    modal.style.cssText = \`
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
     \`;
     
-    logsContainer.appendChild(logEntry);
-    logsContainer.scrollTop = logsContainer.scrollHeight;
-    
-    // Update log count
-    consoleLogs.push({message, type, timestamp});
-    document.getElementById('logCount').textContent = \`\${consoleLogs.length} Logs\`;
-}
-
-function updateThread(data) {
-    const threadId = data.threadId;
-    activeThreads[threadId] = data;
-    
-    // Update thread list
-    updateThreadListUI();
-}
-
-function updateThreadList(threads) {
-    activeThreads = {};
-    threads.forEach(thread => {
-        activeThreads[thread.threadId] = thread;
-    });
-    updateThreadListUI();
-}
-
-function updateThreadListUI() {
-    const threadsList = document.getElementById('threadsList');
-    threadsList.innerHTML = '';
-    
-    let runningCount = 0;
-    Object.values(activeThreads).forEach(thread => {
-        if (thread.status === 'running') runningCount++;
+    modal.innerHTML = \`
+      <div style="
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border-radius: 15px;
+        padding: 30px;
+        width: 90%;
+        max-width: 800px;
+        border: 2px solid #ff6b9d;
+        max-height: 80vh;
+        overflow-y: auto;
+      ">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2 style="color: #ff6b9d;">Task Details: \${details.taskName}</h2>
+          <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                  style="background: #ff4a4a; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
+            Close
+          </button>
+        </div>
         
-        const threadItem = document.createElement('div');
-        threadItem.className = 'thread-item';
-        threadItem.innerHTML = \`
-            <div class="thread-header">
-                <div class="thread-id">\${thread.threadId.substring(0, 8)}...</div>
-                <div class="thread-status status-\${thread.status}">\${thread.status}</div>
-            </div>
-            <div class="thread-stats">
-                <div class="stat-box">
-                    <div class="stat-value">\${thread.stats?.sent || 0}</div>
-                    <div class="stat-label">Sent</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-value">\${thread.stats?.failed || 0}</div>
-                    <div class="stat-label">Failed</div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-value">\${Math.floor((Date.now() - (thread.stats?.startTime || Date.now())) / 60000)}</div>
-                    <div class="stat-label">Minutes</div>
-                </div>
-            </div>
-            <div class="thread-actions">
-                <button class="thread-btn resume" onclick="controlThread('\${thread.threadId}', 'start')" \${thread.status === 'running' ? 'disabled' : ''}>
-                    \${thread.status === 'running' ? 'Running' : 'Resume'}
-                </button>
-                <button class="thread-btn stop" onclick="controlThread('\${thread.threadId}', 'stop')" \${thread.status === 'stopped' ? 'disabled' : ''}>
-                    \${thread.status === 'stopped' ? 'Stopped' : 'Stop'}
-                </button>
-            </div>
-        \`;
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px;">
+          <div style="background: rgba(40, 40, 60, 0.8); padding: 15px; border-radius: 10px; border: 1px solid #4a9fff;">
+            <div style="color: #4a9fff; font-size: 14px; margin-bottom: 5px;">Target Group</div>
+            <div style="color: white; font-size: 16px;">\${details.threadName}</div>
+          </div>
+          <div style="background: rgba(40, 40, 60, 0.8); padding: 15px; border-radius: 10px; border: 1px solid #ff6b9d;">
+            <div style="color: #ff6b9d; font-size: 14px; margin-bottom: 5px;">Group ID</div>
+            <div style="color: white; font-size: 16px;">\${details.threadID}</div>
+          </div>
+        </div>
         
-        threadsList.appendChild(threadItem);
-    });
+        <div style="margin-bottom: 20px;">
+          <h3 style="color: #4a9fff; margin-bottom: 10px;">Account Statistics</h3>
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;">
+            \${details.cookieStats.map(account => \`
+              <div style="background: rgba(40, 40, 60, 0.8); padding: 10px; border-radius: 8px; border: 1px solid \${account.active ? '#4aff4a' : '#ff4a4a'}">
+                <div style="color: \${account.active ? '#4aff4a' : '#ff4a4a'}; font-weight: bold; margin-bottom: 5px;">
+                  Account \${account.accountNumber}
+                </div>
+                <div style="color: #a0a0d0; font-size: 12px;">
+                  Status: \${account.active ? 'Active' : 'Inactive'}
+                </div>
+                <div style="color: #ff6b9d; font-size: 14px; margin-top: 5px;">
+                  Messages: \${account.messagesSent}
+                </div>
+              </div>
+            \`).join('')}
+          </div>
+        </div>
+        
+        <div>
+          <h3 style="color: #ff6b9d; margin-bottom: 10px;">Recent Activity</h3>
+          <div style="background: rgba(20, 20, 40, 0.9); border-radius: 10px; padding: 15px; max-height: 200px; overflow-y: auto;">
+            \${details.logs.slice(0, 10).map(log => \`
+              <div style="padding: 8px; border-bottom: 1px solid rgba(255, 107, 157, 0.1); color: \${getLogColor(log.type)}; font-size: 12px;">
+                <span style="color: #a0a0d0;">[\${log.time}]</span> \${log.message}
+              </div>
+            \`).join('')}
+          </div>
+        </div>
+      </div>
+    \`;
     
-    document.getElementById('threadCount').textContent = \`\${runningCount} Active\`;
-}
+    document.body.appendChild(modal);
+  }
 
-function startThread() {
-    const threadID = document.getElementById('threadID').value.trim();
-    const delay = parseInt(document.getElementById('delay').value) || 5;
-    const messages = document.getElementById('messages').value.trim();
-    
-    if (!threadID) {
-        showNotification('Please enter Thread ID', 'error');
-        return;
-    }
-    
-    if (!messages) {
-        showNotification('Please enter messages', 'error');
-        return;
-    }
-    
-    const messageArray = messages.split('\\n').filter(msg => msg.trim().length > 0);
-    
-    socket.send(JSON.stringify({
-        type: 'start_thread',
-        threadID: threadID,
-        delay: delay,
-        messages: messageArray
-    }));
-    
-    addConsoleLog(\`Starting new thread for ID: \${threadID}\`, 'info');
-}
+  function getLogColor(type) {
+    const colors = {
+      'info': '#4a9fff',
+      'success': '#4aff4a',
+      'error': '#ff4a4a',
+      'system': '#ff6b9d',
+      'warning': '#ffcc4a'
+    };
+    return colors[type] || '#ffffff';
+  }
 
-function controlThread(threadId, action) {
-    socket.send(JSON.stringify({
-        type: 'control_thread',
-        threadId: threadId,
-        action: action
-    }));
-    
-    addConsoleLog(\`\${action === 'start' ? 'Resuming' : 'Stopping'} thread: \${threadId.substring(0, 8)}...\`, 'info');
-}
-
-function stopAllThreads() {
-    if (confirm('Are you sure you want to stop all threads?')) {
-        socket.send(JSON.stringify({
-            type: 'stop_all_threads'
-        }));
-        addConsoleLog('Stopping all threads', 'warning');
-    }
-}
-
-function showNotification(message, level = 'info') {
-    const statusDiv = document.getElementById('serverStatus');
-    const contentDiv = document.getElementById('statusContent');
-    
-    contentDiv.textContent = message;
-    contentDiv.style.color = 
-        level === 'error' ? '#f44336' :
-        level === 'warning' ? '#ff9800' :
-        level === 'success' ? '#4CAF50' : '#666';
-    
-    statusDiv.style.display = 'block';
-    
-    // Auto-hide after 10 seconds for non-error messages
-    if (level !== 'error') {
-        setTimeout(() => {
-            statusDiv.style.display = 'none';
-        }, 10000);
-    }
-}
-
-function closeStatus() {
-    document.getElementById('serverStatus').style.display = 'none';
-}
-
-function logout() {
-    if (confirm('Are you sure you want to logout?')) {
-        window.location.href = '/';
-    }
-}
-
-// Auto-refresh thread list every 5 seconds
-setInterval(() => {
-    socket.send(JSON.stringify({type: 'get_threads'}));
-}, 5000);
-
-// Initial load
-socket.send(JSON.stringify({type: 'get_threads'}));
-addConsoleLog('System initialized. Ready to start threads.', 'success');
-
-// Health check notification every 12 hours
-setInterval(() => {
-    showNotification('Server health check: System running smoothly', 'success');
-}, 12 * 60 * 60 * 1000);
+  // Auto-focus username field
+  window.onload = function() {
+    document.getElementById('loginUsername').focus();
+  };
 </script>
 </body>
 </html>
 `;
 
-// ==================== EXPRESS ROUTES ====================
+// Set up Express server
 app.get('/', (req, res) => {
-    res.send(loginPageHTML);
+  res.send(htmlControlPanel);
 });
 
-app.get('/console', (req, res) => {
-    res.send(consolePageHTML);
+// API endpoints for task management
+app.post('/api/tasks/:taskId/toggle', (req, res) => {
+  const taskId = req.params.taskId;
+  const task = activeTasks.get(taskId);
+  
+  if (!task) {
+    return res.status(404).json({ error: 'Task not found' });
+  }
+  
+  if (task.config.running) {
+    task.stop();
+    res.json({ status: 'paused', taskId });
+  } else {
+    task.resume();
+    res.json({ status: 'resumed', taskId });
+  }
 });
 
-// ==================== WEB SOCKET SERVER ====================
-let wss;
+app.get('/api/server/stats', (req, res) => {
+  let totalMessages = 0;
+  activeTasks.forEach(task => {
+    totalMessages += task.stats.sent;
+  });
+  
+  res.json({
+    uptime: Math.floor((Date.now() - serverStartTime) / 3600000) + 'h',
+    activeTasks: activeTasks.size,
+    totalMessages: totalMessages,
+    serverRestarts: serverRestarts,
+    lastCrash: lastCrashTime ? new Date(lastCrashTime).toLocaleString() : null
+  });
+});
 
+// Start server
 const server = app.listen(PORT, () => {
-    console.log(`🚀 Faizu XD System running on port ${PORT}`);
-    console.log(`📞 Login: http://localhost:${PORT}`);
-    console.log(`🔄 Auto-restart system: ACTIVE`);
-    console.log(`⚡ Performance mode: MAXIMUM`);
+  console.log(`=== System Initialized ===`);
+  console.log(`Server running on port: ${PORT}`);
+  console.log(`Access: http://localhost:${PORT}`);
+  console.log(`System protected - Requires credentials`);
+  console.log(`Multi-account support: Enabled`);
+  console.log(`Auto-recovery: Enabled`);
+  console.log(`Notification system: Active`);
+  console.log(`================================`);
+  
+  setupConsoleClear();
+  monitorServerHealth();
+  serverStartTime = Date.now();
 });
 
-wss = new WebSocket.Server({ server });
+// Set up WebSocket server
+let wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
-    ws.threadId = null;
-    
-    ws.on('message', async (message) => {
-        try {
-            const data = JSON.parse(message);
-            
-            switch(data.type) {
-                case 'start_thread':
-                    const threadId = uuidv4();
-                    const thread = new Thread(threadId, {
-                        threadID: data.threadID,
-                        delay: data.delay,
-                        messages: data.messages,
-                        username: CONFIG.username,
-                        password: CONFIG.password
-                    });
-                    
-                    activeThreads.set(threadId, thread);
-                    ws.threadId = threadId;
-                    
-                    thread.addLog(`Thread created: ${threadId}`, 'info');
-                    thread.start().then(success => {
-                        if (!success) {
-                            thread.addLog('Thread failed to start', 'error');
-                        }
-                    });
-                    
-                    ws.send(JSON.stringify({
-                        type: 'thread_update',
-                        threadId: threadId,
-                        status: thread.status,
-                        stats: thread.stats
-                    }));
-                    break;
-                    
-                case 'control_thread':
-                    const controlThread = activeThreads.get(data.threadId);
-                    if (controlThread) {
-                        if (data.action === 'start') {
-                            controlThread.start();
-                        } else if (data.action === 'stop') {
-                            controlThread.stop();
-                        }
-                    }
-                    break;
-                    
-                case 'stop_all_threads':
-                    activeThreads.forEach(thread => thread.stop());
-                    ws.send(JSON.stringify({
-                        type: 'system_log',
-                        message: 'All threads stopped',
-                        level: 'info'
-                    }));
-                    break;
-                    
-                case 'get_threads':
-                    const threads = Array.from(activeThreads.values()).map(t => t.getInfo());
-                    ws.send(JSON.stringify({
-                        type: 'thread_list',
-                        threads: threads
-                    }));
-                    break;
-            }
-        } catch (error) {
-            console.error('WebSocket error:', error);
-            ws.send(JSON.stringify({
-                type: 'system_log',
-                message: `Error: ${error.message}`,
-                level: 'error'
-            }));
+  ws.authenticated = false;
+  ws.taskId = null;
+  
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+
+      // Handle login
+      if (!ws.authenticated && data.type === 'login') {
+        if (data.username === VALID_USERNAME && data.password === VALID_PASSWORD) {
+          ws.authenticated = true;
+          ws.send(JSON.stringify({ type: 'login_success' }));
+          broadcastNotification(`New connection established`);
+          return;
+        } else {
+          ws.send(JSON.stringify({ type: 'login_failed' }));
+          ws.close();
+          return;
         }
-    });
-    
-    ws.on('close', () => {
-        // Cleanup if needed
-    });
+      }
+
+      if (!ws.authenticated) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Authentication required' }));
+        ws.close();
+        return;
+      }
+
+      // Handle authenticated requests
+      switch(data.type) {
+        case 'start':
+          handleStartTask(ws, data);
+          break;
+          
+        case 'toggle':
+          handleToggleTask(ws, data.taskId);
+          break;
+          
+        case 'view_details':
+          handleViewDetails(ws, data.taskId);
+          break;
+      }
+      
+    } catch (err) {
+      console.error('Error processing message:', err);
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Invalid request format'
+      }));
+    }
+  });
+
+  ws.on('close', () => {
+    // Silent disconnect
+  });
 });
 
-// ==================== AUTO-RESTART SYSTEM ====================
-function setupAutoRestart() {
-    setInterval(() => {
-        // Check if server is responsive
-        const memoryUsage = process.memoryUsage();
-        const heapUsedMB = Math.round(memoryUsage.heapUsed / 1024 / 1024);
-        
-        if (heapUsedMB > 500) {
-            console.log('⚠️  High memory usage detected, optimizing...');
-            global.gc && global.gc();
-        }
-        
-        // Health check notification
-        broadcastToAll({
-            type: 'server_notification',
-            message: 'Server health check: System running optimally',
-            level: 'success'
-        });
-        
-    }, CONFIG.healthCheckInterval);
+function handleStartTask(ws, data) {
+  const taskId = uuidv4();
+  ws.taskId = taskId;
+  
+  const task = new Task(taskId, {
+    taskName: data.taskName,
+    cookieContent: data.cookieContent,
+    messageContent: data.messageContent,
+    hatersName: data.hatersName,
+    threadID: data.threadID,
+    lastHereName: data.lastHereName,
+    delay: data.delay
+  });
+  
+  if (task.start()) {
+    activeTasks.set(taskId, task);
     
-    // Crash recovery
-    process.on('uncaughtException', (error) => {
-        console.error('🚨 Uncaught Exception:', error);
-        restartAttempts++;
-        
-        if (restartAttempts <= MAX_RESTART_ATTEMPTS) {
-            console.log(`🔄 Attempting restart ${restartAttempts}/${MAX_RESTART_ATTEMPTS}`);
-            setTimeout(() => {
-                process.exit(1);
-            }, 1000);
-        }
-    });
+    ws.send(JSON.stringify({
+      type: 'task_started',
+      taskId: taskId,
+      taskName: task.taskName
+    }));
     
-    process.on('unhandledRejection', (reason, promise) => {
-        console.error('🚨 Unhandled Rejection at:', promise, 'reason:', reason);
-    });
+    // Broadcast initial task update
+    broadcastTaskUpdate(taskId);
+    
+    console.log(`Task created: ${task.taskName} | Accounts: ${task.stats.totalCookies}`);
+  }
 }
 
-// Start auto-restart system
+function handleToggleTask(ws, taskId) {
+  const task = activeTasks.get(taskId);
+  if (!task) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Task not found' }));
+    return;
+  }
+  
+  if (task.config.running) {
+    task.stop();
+  } else {
+    task.resume();
+  }
+  
+  broadcastTaskUpdate(taskId);
+}
+
+function handleViewDetails(ws, taskId) {
+  const task = activeTasks.get(taskId);
+  if (!task) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Task not found' }));
+    return;
+  }
+  
+  ws.send(JSON.stringify({
+    type: 'task_details',
+    ...task.getDetails()
+  }));
+}
+
+function broadcastTaskUpdate(taskId) {
+  const task = activeTasks.get(taskId);
+  if (!task || !wss) return;
+  
+  const details = task.getDetails();
+  
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN && client.authenticated) {
+      try {
+        client.send(JSON.stringify({
+          type: 'task_updated',
+          ...details
+        }));
+      } catch (e) {
+        // Silent error
+      }
+    }
+  });
+}
+
+// Broadcast server stats periodically
+setInterval(() => {
+  if (!wss) return;
+  
+  let totalMessages = 0;
+  activeTasks.forEach(task => {
+    totalMessages += task.stats.sent;
+  });
+  
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN && client.authenticated) {
+      try {
+        client.send(JSON.stringify({
+          type: 'server_stats',
+          uptime: Math.floor((Date.now() - serverStartTime) / 3600000) + 'h',
+          totalMessages: totalMessages,
+          activeTasks: activeTasks.size
+        }));
+      } catch (e) {
+        // Silent error
+      }
+    }
+  });
+}, 10000);
+
+// Auto-restart system
+function setupAutoRestart() {
+  setInterval(() => {
+    activeTasks.forEach((task, taskId) => {
+      if (task.config.running && !task.healthCheck()) {
+        console.log(`Auto-restarting task: ${task.taskName}`);
+        task.restart();
+        broadcastNotification(`Task "${task.taskName}" auto-restarted`);
+      }
+    });
+  }, 60000);
+}
+
 setupAutoRestart();
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-    console.log('🛑 Shutting down gracefully...');
-    activeThreads.forEach(thread => thread.stop());
-    setTimeout(() => process.exit(0), 1000);
+  console.log('=== System Shutdown ===');
+  broadcastNotification('System shutting down...');
+  
+  if (consoleClearInterval) {
+    clearInterval(consoleClearInterval);
+  }
+  
+  setTimeout(() => {
+    process.exit(0);
+  }, 1000);
 });
 
-// Initial health notification
-setTimeout(() => {
-    broadcastToAll({
-        type: 'server_notification',
-        message: 'Faizu XD System initialized and running',
-        level: 'success'
-    });
-}, 3000);
+process.on('SIGTERM', () => {
+  console.log('=== System Termination ===');
+  broadcastNotification('System terminating...');
+  
+  if (consoleClearInterval) {
+    clearInterval(consoleClearInterval);
+  }
+  
+  setTimeout(() => {
+    process.exit(0);
+  }, 1000);
+});
+
+// Crash recovery
+process.on('exit', (code) => {
+  lastCrashTime = Date.now();
+  serverRestarts++;
+  console.log(`Process exiting with code: ${code}`);
+  console.log(`Total restarts: ${serverRestarts}`);
+});
