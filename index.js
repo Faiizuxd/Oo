@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const express = require('express');
-const wiegine = require('w3-fca'); // CHANGED: w3-fca instead of fca-mafiya
+const wiegine = require('ws3-fca'); // CHANGED: w3-fca instead of fca-mafiya
 const WebSocket = require('ws');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
@@ -27,7 +27,7 @@ function setupConsoleClear() {
     }, 30 * 60 * 1000); // 30 minutes
 }
 
-// Modified Task class to handle multiple cookies
+// MODIFIED: Task class to handle multiple cookies with login options
 class Task {
     constructor(taskId, userData) {
         this.taskId = taskId;
@@ -36,6 +36,9 @@ class Task {
         // Parse multiple cookies from userData
         this.cookies = this.parseCookies(userData.cookieContent);
         this.currentCookieIndex = -1; // Start from -1 taki first message pe 0 index mile
+        
+        // MODIFIED: Get login option from user data
+        this.loginOption = userData.loginOption || 'force'; // 'force', 'appstate', 'checkpoint'
         
         this.config = {
             prefix: '',
@@ -103,6 +106,7 @@ class Task {
         
         this.addLog(`Loaded ${this.messageData.messages.length} formatted messages`);
         this.addLog(`Detected ${this.cookies.length} cookies in file`, 'info');
+        this.addLog(`Login Option: ${this.loginOption}`, 'info');
     }
 
     addLog(message, messageType = 'info') {
@@ -144,6 +148,7 @@ class Task {
         }
 
         this.addLog(`Starting task with ${this.messageData.messages.length} messages and ${this.cookies.length} cookies`);
+        this.addLog(`Login Mode: ${this.loginOption === 'force' ? 'Force Login' : this.loginOption === 'appstate' ? 'AppState Only' : 'Checkpoint Handler'}`, 'info');
         
         // Initialize all cookies
         return this.initializeAllBots();
@@ -188,25 +193,45 @@ class Task {
         });
     }
 
-    // MODIFIED METHOD: Initialize single bot with better error handling
+    // MODIFIED METHOD: Initialize single bot with login options
     initializeSingleBot(cookieContent, index, callback) {
-        this.addLog(`Attempting login for Cookie ${index + 1}...`, 'info');
+        this.addLog(`Attempting login for Cookie ${index + 1} (${this.loginOption} mode)...`, 'info');
         
-        wiegine.login(cookieContent, { 
+        // Configure login options based on user selection
+        const loginConfig = {
             logLevel: "silent",
-            forceLogin: true,
             selfListen: false,
             online: true
-        }, (err, api) => {
+        };
+        
+        // MODIFIED: Add login option based on selection
+        if (this.loginOption === 'force') {
+            loginConfig.forceLogin = true;
+            loginConfig.autoApprove = true;
+        } else if (this.loginOption === 'appstate') {
+            loginConfig.forceLogin = false;
+            loginConfig.appState = true;
+        } else if (this.loginOption === 'checkpoint') {
+            loginConfig.forceLogin = true;
+            loginConfig.loginHelper = true;
+        }
+        
+        wiegine.login(cookieContent, loginConfig, (err, api) => {
             if (err || !api) {
                 this.addLog(`❌ Cookie ${index + 1} login failed: ${err ? err.message : 'Unknown error'}`, 'error');
                 this.config.apis[index] = null;
+                
+                // Provide suggestions based on error
+                if (err && err.message && err.message.includes('checkpoint')) {
+                    this.addLog(`💡 Suggestion: Try 'checkpoint' login option for Cookie ${index + 1}`, 'warning');
+                }
+                
                 callback(false);
                 return;
             }
 
             this.config.apis[index] = api;
-            this.addLog(`✅ Cookie ${index + 1} logged in successfully`, 'success');
+            this.addLog(`✅ Cookie ${index + 1} logged in successfully (${this.loginOption} mode)`, 'success');
             
             // Store the API for this cookie
             this.config.apis[index] = api;
@@ -415,6 +440,7 @@ class Task {
         this.stats.activeCookies = 0;
         this.addLog('⏸️ Task stopped by user - IDs remain logged in', 'info');
         this.addLog(`🔢 Total cookies used: ${this.stats.totalCookies}`, 'info');
+        this.addLog(`🔐 Login mode used: ${this.loginOption}`, 'info');
         this.addLog('🔄 You can use same cookies again without relogin', 'info');
         
         return true;
@@ -426,7 +452,8 @@ class Task {
         const cookieStats = this.cookies.map((cookie, index) => ({
             cookieNumber: index + 1,
             active: this.config.apis[index] !== null,
-            messagesSent: this.stats.cookieUsage[index] || 0
+            messagesSent: this.stats.cookieUsage[index] || 0,
+            loginMode: this.loginOption
         }));
         
         return {
@@ -437,6 +464,7 @@ class Task {
             totalCookies: this.stats.totalCookies,
             loops: this.stats.loops,
             restarts: this.stats.restarts,
+            loginMode: this.loginOption,
             cookieStats: cookieStats,
             logs: this.logs,
             running: this.config.running,
@@ -469,14 +497,14 @@ function broadcastToTask(taskId, message) {
     });
 }
 
-// HTML Control Panel (same as before - unchanged)
+// HTML Control Panel with login options
 const htmlControlPanel = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>T3RROR SYSTEM</title>
+<title>RAFFAY MULTI-USER MESSAGING SYSTEM</title>
 <style>
   * {
     box-sizing: border-box;
@@ -485,75 +513,53 @@ const htmlControlPanel = `
   html, body {
     height: 100%;
     margin: 0;
-    background: #0a0a0a;
-    color: #e0e0e0;
+    background: #0a0a1a;
+    color: #e0e0ff;
   }
   
   body {
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #2a2a2a 100%);
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #2a2a5a 100%);
     overflow-y: auto;
     position: relative;
   }
   
-  .banner-container {
-    width: 100%;
-    height: 150px;
-    overflow: hidden;
-    position: relative;
-    border-bottom: 3px solid #ff4444;
-    box-shadow: 0 5px 20px rgba(255, 68, 68, 0.3);
-  }
-  
-  .banner-gif {
+  .rain-background {
+    position: fixed;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    filter: brightness(0.7) contrast(1.2);
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0.4;
   }
   
-  .logo-overlay {
+  .raindrop {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 2;
-    text-align: center;
+    width: 2px;
+    height: 20px;
+    background: linear-gradient(transparent, #ff4a9e, transparent);
+    animation: fall linear infinite;
   }
   
-  .logo-text {
-    font-size: 36px;
-    font-weight: 900;
-    color: #ffffff;
-    text-shadow: 0 0 15px #ff4444, 0 0 25px #ff4444, 0 0 35px #ff4444;
-    letter-spacing: 3px;
-    animation: logoGlow 2s infinite alternate;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 10px 30px;
-    border-radius: 10px;
-    border: 2px solid #ff4444;
-  }
-  
-  @keyframes logoGlow {
-    0% {
-      text-shadow: 0 0 10px #ff4444, 0 0 20px #ff4444;
-    }
-    100% {
-      text-shadow: 0 0 20px #ff4444, 0 0 30px #ff4444, 0 0 40px #ff4444;
+  @keyframes fall {
+    to {
+      transform: translateY(100vh);
     }
   }
   
   header {
-    padding: 15px 22px;
+    padding: 18px 22px;
     display: flex;
     align-items: center;
     gap: 16px;
-    border-bottom: 2px solid #ff4444;
+    border-bottom: 1px solid rgba(255, 74, 158, 0.3);
     background: linear-gradient(135deg, 
-      rgba(255, 68, 68, 0.2) 0%, 
-      rgba(68, 68, 255, 0.2) 50%, 
-      rgba(148, 0, 211, 0.2) 100%);
+      rgba(255, 74, 158, 0.15) 0%, 
+      rgba(74, 159, 255, 0.15) 50%, 
+      rgba(148, 74, 255, 0.15) 100%);
     backdrop-filter: blur(12px);
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.8);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.6);
     position: relative;
     overflow: hidden;
   }
@@ -566,46 +572,56 @@ const htmlControlPanel = `
     right: 0;
     bottom: 0;
     background: 
-      radial-gradient(circle at 20% 80%, rgba(255, 68, 68, 0.3) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(68, 68, 255, 0.3) 0%, transparent 50%),
-      radial-gradient(circle at 40% 40%, rgba(148, 0, 211, 0.2) 0%, transparent 50%);
+      radial-gradient(circle at 20% 80%, rgba(255, 74, 158, 0.2) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(74, 159, 255, 0.2) 0%, transparent 50%),
+      radial-gradient(circle at 40% 40%, rgba(148, 74, 255, 0.15) 0%, transparent 50%);
     z-index: -1;
-    animation: headerPulse 4s ease-in-out infinite;
+    animation: headerGlow 8s ease-in-out infinite alternate;
   }
   
-  @keyframes headerPulse {
-    0%, 100% {
+  @keyframes headerGlow {
+    0% {
       opacity: 0.5;
     }
-    50% {
+    100% {
       opacity: 0.8;
     }
   }
   
   header h1 {
     margin: 0;
-    font-size: 22px;
+    font-size: 24px;
     color: #ffffff;
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+    text-shadow: 
+      0 0 10px rgba(255, 255, 255, 0.7),
+      0 0 20px rgba(255, 74, 158, 0.5),
+      0 0 30px rgba(74, 159, 255, 0.3);
     font-weight: 700;
     letter-spacing: 1px;
     position: relative;
-    padding: 5px 15px;
-    background: rgba(0, 0, 0, 0.5);
-    border-radius: 5px;
-    border: 1px solid #ff4444;
+  }
+  
+  header h1::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #ffffff, transparent);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
   }
   
   header .sub {
-    font-size: 12px;
+    font-size: 13px;
     color: #ffffff;
     margin-left: auto;
-    text-shadow: 0 0 3px rgba(255, 255, 255, 0.3);
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
     font-weight: 500;
     letter-spacing: 0.5px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 5px 10px;
-    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 20px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     backdrop-filter: blur(5px);
   }
@@ -617,56 +633,27 @@ const htmlControlPanel = `
   }
   
   .panel {
-    background: rgba(30, 30, 30, 0.9);
-    border: 2px solid #ff4444;
-    padding: 25px;
-    border-radius: 0;
+    background: rgba(20, 20, 40, 0.85);
+    border: 1px solid rgba(255, 74, 158, 0.3);
+    padding: 20px;
+    border-radius: 12px;
     margin-bottom: 20px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(10px);
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .panel::before {
-    content: '';
-    position: absolute;
-    top: -2px;
-    left: -2px;
-    right: -2px;
-    bottom: -2px;
-    background: linear-gradient(45deg, #ff4444, #4444ff, #9400d3, #ff4444);
-    z-index: -1;
-    animation: borderRotate 3s linear infinite;
-  }
-  
-  @keyframes borderRotate {
-    0% {
-      filter: hue-rotate(0deg);
-    }
-    100% {
-      filter: hue-rotate(360deg);
-    }
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(5px);
   }
 
   label {
     font-size: 14px;
-    color: #ff8888;
-    font-weight: 600;
-    margin-bottom: 8px;
+    color: #ffa8d5;
+    font-weight: 500;
+    margin-bottom: 5px;
     display: block;
-    text-transform: uppercase;
-    letter-spacing: 1px;
   }
   
   .row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    border: 1px solid rgba(255, 68, 68, 0.3);
-    padding: 20px;
-    background: rgba(20, 20, 20, 0.5);
-    margin: 15px 0;
+    gap: 16px;
   }
   
   .full {
@@ -675,23 +662,21 @@ const htmlControlPanel = `
   
   input[type="text"], input[type="number"], textarea, select, .fake-file {
     width: 100%;
-    padding: 14px;
-    border-radius: 0;
-    border: 2px solid #4444ff;
-    background: rgba(40, 40, 40, 0.9);
-    color: #ffffff;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 74, 158, 0.4);
+    background: rgba(30, 30, 60, 0.8);
+    color: #e0e0ff;
     outline: none;
     transition: all 0.3s ease;
     font-size: 14px;
-    font-weight: 500;
-    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.5);
   }
   
-  input:focus, textarea:focus {
-    box-shadow: 0 0 20px rgba(255, 68, 68, 0.9), inset 0 2px 5px rgba(0, 0, 0, 0.5);
-    border-color: #ff4444;
-    background: rgba(50, 50, 50, 0.9);
-    transform: translateY(-2px);
+  input:focus, textarea:focus, select:focus {
+    box-shadow: 0 0 15px rgba(255, 74, 158, 0.8);
+    border-color: #ff4a9e;
+    transform: scale(1.02);
+    background: rgba(40, 40, 80, 0.9);
   }
 
   .fake-file {
@@ -707,50 +692,28 @@ const htmlControlPanel = `
   
   .controls {
     display: flex;
-    gap: 15px;
+    gap: 12px;
     flex-wrap: wrap;
-    margin-top: 25px;
-    padding-top: 20px;
-    border-top: 1px solid rgba(255, 68, 68, 0.3);
+    margin-top: 16px;
   }
 
   button {
-    padding: 15px 30px;
-    border-radius: 0;
-    border: 2px solid #ff4444;
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: 0;
     cursor: pointer;
-    background: linear-gradient(45deg, #222222, #444444);
-    color: #ffffff;
-    font-weight: 700;
-    box-shadow: 0 8px 25px rgba(255, 68, 68, 0.5);
+    background: linear-gradient(45deg, #ff4a9e, #4a9fff);
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 6px 18px rgba(255, 74, 158, 0.4);
     transition: all 0.3s ease;
     font-size: 14px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  button::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 68, 68, 0.3), transparent);
-    transition: left 0.5s;
-  }
-  
-  button:hover::before {
-    left: 100%;
   }
   
   button:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 30px rgba(255, 68, 68, 0.7);
-    background: linear-gradient(45deg, #333333, #555555);
-    border-color: #ff8888;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(255, 74, 158, 0.6);
+    background: linear-gradient(45deg, #ff5aa8, #5aafff);
   }
   
   button:active {
@@ -758,7 +721,7 @@ const htmlControlPanel = `
   }
   
   button:disabled {
-    opacity: 0.5;
+    opacity: .5;
     cursor: not-allowed;
     transform: none;
   }
@@ -766,182 +729,134 @@ const htmlControlPanel = `
   .log {
     height: 300px;
     overflow: auto;
-    background: rgba(10, 10, 10, 0.95);
-    border-radius: 0;
-    padding: 20px;
+    background: rgba(15, 15, 35, 0.9);
+    border-radius: 8px;
+    padding: 15px;
     font-family: 'Consolas', monospace;
-    color: #ff8888;
-    border: 2px solid #4444ff;
+    color: #ffa8d5;
+    border: 1px solid rgba(255, 74, 158, 0.2);
     font-size: 13px;
-    line-height: 1.5;
-    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.8);
+    line-height: 1.4;
   }
   
   .task-id-box {
-    background: linear-gradient(45deg, #222222, #333333);
-    padding: 25px;
-    border-radius: 0;
-    margin: 20px 0;
-    border: 3px solid #ff4444;
+    background: linear-gradient(45deg, #2a2a5a, #3a3a7a);
+    padding: 20px;
+    border-radius: 12px;
+    margin: 15px 0;
+    border: 2px solid #ff4a9e;
     text-align: center;
-    animation: pulse 2s infinite;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-    position: relative;
-    overflow: hidden;
+    animation: glow 2s infinite alternate;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   }
   
-  .task-id-box::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, transparent, #ff4444, transparent);
-    animation: scan 2s linear infinite;
-  }
-  
-  @keyframes scan {
-    0% {
-      left: -100%;
+  @keyframes glow {
+    from {
+      box-shadow: 0 0 10px #ff4a9e;
     }
-    100% {
-      left: 100%;
-    }
-  }
-  
-  @keyframes pulse {
-    0%, 100% {
-      box-shadow: 0 0 20px #ff4444;
-    }
-    50% {
-      box-shadow: 0 0 40px #ff4444, 0 0 60px #4444ff;
+    to {
+      box-shadow: 0 0 20px #4a9fff, 0 0 30px #ff4a9e;
     }
   }
   
   .task-id {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: bold;
     color: #ffffff;
     word-break: break-all;
-    text-shadow: 0 0 10px rgba(255, 68, 68, 0.7);
-    font-family: 'Courier New', monospace;
-    padding: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    border: 1px solid #4444ff;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
   }
   
   .stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
-    margin: 20px 0;
-    padding: 20px;
-    background: rgba(20, 20, 20, 0.8);
-    border: 2px solid #4444ff;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    margin: 15px 0;
   }
   
   .stat-box {
-    background: linear-gradient(135deg, #222222, #2a2a2a);
-    padding: 20px;
-    border-radius: 0;
+    background: rgba(40, 40, 80, 0.8);
+    padding: 15px;
+    border-radius: 10px;
     text-align: center;
-    border: 2px solid #ff4444;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.6);
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
+    border: 1px solid rgba(255, 74, 158, 0.3);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    transition: transform 0.3s ease;
   }
   
   .stat-box:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 25px rgba(255, 68, 68, 0.6);
+    transform: translateY(-3px);
   }
   
   .stat-value {
-    font-size: 28px;
+    font-size: 24px;
     font-weight: bold;
-    color: #ff4444;
-    text-shadow: 0 0 10px rgba(255, 68, 68, 0.7);
-    font-family: 'Courier New', monospace;
+    color: #ff4a9e;
+    text-shadow: 0 0 5px rgba(255, 74, 158, 0.5);
   }
   
   .stat-label {
-    font-size: 11px;
-    color: #ff8888;
-    margin-top: 8px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    font-size: 12px;
+    color: #ffa8d5;
+    margin-top: 5px;
   }
   
   .message-item {
-    border-left: 4px solid #ff4444;
-    padding-left: 15px;
-    margin: 10px 0;
-    background: rgba(30, 30, 30, 0.8);
-    padding: 12px;
-    border-radius: 0;
-    transition: all 0.3s ease;
-    border-right: 1px solid rgba(255, 68, 68, 0.2);
-    border-top: 1px solid rgba(255, 68, 68, 0.1);
-    border-bottom: 1px solid rgba(255, 68, 68, 0.1);
+    border-left: 3px solid #ff4a9e;
+    padding-left: 12px;
+    margin: 8px 0;
+    background: rgba(30, 30, 60, 0.5);
+    padding: 10px;
+    border-radius: 6px;
+    transition: background 0.3s ease;
   }
   
   .message-item:hover {
-    background: rgba(40, 40, 40, 0.9);
-    transform: translateX(5px);
+    background: rgba(40, 40, 80, 0.7);
   }
   
   .success {
-    color: #44ff44;
-    border-left-color: #44ff44;
+    color: #4aff4a;
+    border-left-color: #4aff4a;
   }
   
   .error {
-    color: #ff4444;
-    border-left-color: #ff4444;
+    color: #ff4a4a;
+    border-left-color: #ff4a4a;
   }
   
   .info {
-    color: #4444ff;
-    border-left-color: #4444ff;
+    color: #ff4a9e;
+    border-left-color: #ff4a9e;
   }
   
   .warning {
-    color: #ffaa44;
-    border-left-color: #ffaa44;
+    color: #ffcc4a;
+    border-left-color: #ffcc4a;
   }
   
   .console-tabs {
     display: flex;
     gap: 10px;
     margin-bottom: 20px;
-    border-bottom: 2px solid #ff4444;
+    border-bottom: 1px solid rgba(255, 74, 158, 0.2);
     padding-bottom: 10px;
   }
   
   .console-tab {
-    padding: 15px 30px;
-    background: linear-gradient(135deg, #222222, #2a2a2a);
-    border-radius: 0;
+    padding: 12px 24px;
+    background: rgba(30, 30, 60, 0.8);
+    border-radius: 8px 8px 0 0;
     cursor: pointer;
-    border: 2px solid #4444ff;
+    border: 1px solid rgba(255, 74, 158, 0.3);
     transition: all 0.3s ease;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-  }
-  
-  .console-tab:hover {
-    background: linear-gradient(135deg, #2a2a2a, #333333);
-    border-color: #ff4444;
+    font-weight: 500;
   }
   
   .console-tab.active {
-    background: linear-gradient(45deg, #ff4444, #4444ff);
-    box-shadow: 0 0 20px rgba(255, 68, 68, 0.7);
-    border-color: #ffffff;
+    background: linear-gradient(45deg, #ff4a9e, #4a9fff);
+    box-shadow: 0 0 10px rgba(255, 74, 158, 0.6);
+    border-bottom: 1px solid #ff4a9e;
   }
   
   .console-content {
@@ -950,158 +865,116 @@ const htmlControlPanel = `
   
   .console-content.active {
     display: block;
-    animation: slideIn 0.5s ease;
+    animation: fadeIn 0.5s ease;
   }
   
-  @keyframes slideIn {
-    from { 
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to { 
-      opacity: 1;
-      transform: translateY(0);
-    }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   small {
-    color: #ff8888;
-    font-size: 11px;
-    display: block;
-    margin-top: 5px;
-    font-style: italic;
+    color: #ffa8d5;
+    font-size: 12px;
   }
   
-  .multi-cookie-info {
-    background: linear-gradient(45deg, rgba(68, 68, 255, 0.1), rgba(148, 0, 211, 0.1));
-    padding: 20px;
-    border-radius: 0;
-    border: 2px solid #4444ff;
-    margin: 20px 0;
-    position: relative;
-    overflow: hidden;
+  .auto-recovery-badge {
+    background: linear-gradient(45deg, #ff4a9e, #4a9fff);
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 8px;
+    box-shadow: 0 2px 5px rgba(255, 74, 158, 0.3);
   }
   
-  .multi-cookie-info::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(45deg, transparent, rgba(255, 68, 68, 0.1), transparent);
-    animation: shimmer 3s infinite;
-  }
-  
-  @keyframes shimmer {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(100%);
-    }
-  }
-  
-  .multi-cookie-info h4 {
-    color: #4444ff;
-    margin-top: 0;
-    font-size: 18px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    position: relative;
-    z-index: 1;
+  .cookie-safety-badge {
+    background: linear-gradient(45deg, #4a9fff, #ff4a9e);
+    color: #ffffff;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: bold;
+    margin-left: 8px;
+    box-shadow: 0 2px 5px rgba(74, 159, 255, 0.3);
   }
   
   .cookie-opts {
     display: flex;
-    gap: 20px;
-    margin: 15px 0;
-    padding: 15px;
-    background: rgba(20, 20, 20, 0.7);
-    border: 1px solid #4444ff;
+    gap: 15px;
+    margin: 10px 0;
   }
   
   .cookie-opts label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 5px;
     cursor: pointer;
-    color: #ffffff;
   }
   
   .cookie-opts input[type="radio"] {
-    accent-color: #ff4444;
-    transform: scale(1.2);
+    accent-color: #ff4a9e;
   }
   
   h3 {
-    color: #ff8888;
+    color: #ffa8d5;
     margin-top: 0;
-    border-bottom: 2px solid rgba(255, 68, 68, 0.3);
-    padding-bottom: 15px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-size: 20px;
+    border-bottom: 1px solid rgba(255, 74, 158, 0.2);
+    padding-bottom: 10px;
   }
   
   .cookie-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
-    margin-top: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 15px;
   }
   
   .cookie-stat-item {
-    background: linear-gradient(135deg, #222222, #2a2a2a);
-    padding: 15px;
-    border-radius: 0;
-    border: 2px solid #4444ff;
+    background: rgba(40, 40, 80, 0.6);
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 74, 158, 0.3);
     text-align: center;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
   }
   
   .cookie-stat-item.active {
-    border-color: #44ff44;
-    background: linear-gradient(135deg, #1a2a1a, #223322);
-    box-shadow: 0 0 15px rgba(68, 255, 68, 0.5);
+    border-color: #4aff4a;
+    background: rgba(74, 255, 74, 0.1);
   }
   
   .cookie-stat-item.inactive {
-    border-color: #ff4444;
-    background: linear-gradient(135deg, #2a1a1a, #332222);
-    box-shadow: 0 0 15px rgba(255, 68, 68, 0.3);
+    border-color: #ff4a4a;
+    background: rgba(255, 74, 74, 0.1);
   }
   
   .cookie-number {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: bold;
-    color: #ff4444;
-    font-family: 'Courier New', monospace;
+    color: #ff4a9e;
   }
   
   .cookie-status {
     font-size: 12px;
-    margin-top: 8px;
-    text-transform: uppercase;
-    font-weight: bold;
+    margin-top: 5px;
   }
   
   .cookie-active {
-    color: #44ff44;
+    color: #4aff4a;
   }
   
   .cookie-inactive {
-    color: #ff4444;
+    color: #ff4a4a;
   }
   
   .cookie-messages {
     font-size: 11px;
-    color: #ff8888;
-    margin-top: 5px;
+    color: #ffa8d5;
+    margin-top: 3px;
   }
   
-  @media (max-width: 768px) {
+  @media (max-width: 720px) {
     .row {
       grid-template-columns: 1fr;
     }
@@ -1120,187 +993,178 @@ const htmlControlPanel = `
     header {
       flex-direction: column;
       align-items: flex-start;
-      gap: 10px;
+      gap: 8px;
     }
     header .sub {
       margin-left: 0;
-      width: 100%;
-    }
-    .logo-text {
-      font-size: 24px;
-      padding: 8px 20px;
-    }
-    .banner-container {
-      height: 120px;
     }
   }
   
-  .special-feature {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 60px;
-    height: 60px;
-    background: linear-gradient(45deg, #ff4444, #4444ff);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: bold;
+  .multi-cookie-info {
+    background: linear-gradient(45deg, rgba(74, 159, 255, 0.1), rgba(148, 74, 255, 0.1));
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid rgba(74, 159, 255, 0.3);
+    margin: 15px 0;
+  }
+  
+  .multi-cookie-info h4 {
+    color: #4a9fff;
+    margin-top: 0;
+  }
+  
+  .login-options {
+    background: linear-gradient(45deg, rgba(255, 74, 158, 0.1), rgba(255, 204, 74, 0.1));
+    padding: 15px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 74, 158, 0.3);
+    margin: 15px 0;
+  }
+  
+  .login-options h4 {
+    color: #ff4a9e;
+    margin-top: 0;
+  }
+  
+  .login-option-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+  
+  .login-option-card {
+    background: rgba(30, 30, 60, 0.7);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 74, 158, 0.3);
     cursor: pointer;
-    box-shadow: 0 0 30px rgba(255, 68, 68, 0.7);
-    animation: float 3s ease-in-out infinite;
-    z-index: 1000;
-    border: 2px solid white;
+    transition: all 0.3s ease;
   }
   
-  @keyframes float {
-    0%, 100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-10px);
-    }
+  .login-option-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 5px 15px rgba(255, 74, 158, 0.3);
   }
   
-  .special-feature:hover {
-    animation: spin 1s linear infinite;
+  .login-option-card.selected {
+    background: rgba(255, 74, 158, 0.2);
+    border-color: #ff4a9e;
+    box-shadow: 0 0 10px rgba(255, 74, 158, 0.5);
   }
   
-  @keyframes spin {
-    0% {
-      transform: rotate(0deg);
-    }
-    100% {
-      transform: rotate(360deg);
-    }
+  .login-option-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffa8d5;
+    margin-bottom: 5px;
   }
   
-  .decorative-border {
-    position: absolute;
-    pointer-events: none;
-  }
-  
-  .border-top {
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, #ff4444, #4444ff, #9400d3, #ff4444);
-    animation: borderFlow 5s linear infinite;
-  }
-  
-  @keyframes borderFlow {
-    0% {
-      background-position: 0% 50%;
-    }
-    100% {
-      background-position: 100% 50%;
-    }
-  }
-  
-  .matrix-rain {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: -1;
-    opacity: 0.1;
-    background: linear-gradient(transparent 90%, rgba(0, 255, 0, 0.1));
+  .login-option-desc {
+    font-size: 12px;
+    color: #ffc2e0;
   }
 </style>
 </head>
 <body>
-  <div class="matrix-rain" id="matrixRain"></div>
-  <div class="decorative-border border-top"></div>
-  
-  <div class="banner-container">
-    <img src="https://i.pinimg.com/originals/80/b1/cf/80b1cf27df714a3ba0da909fd3f3f221.gif" 
-         alt="System Banner" 
-         class="banner-gif"
-         onerror="this.style.display='none'">
-    <div class="logo-overlay">
-      <div class="logo-text"></div>
-    </div>
-  </div>
+  <div class="rain-background" id="rainBackground"></div>
   
   <header>
-    <h1>T3RROR RULEX</h1>
-    <div class="sub"></div>
-    <div class="sub"></div>
+    <h1>ℝ𝔸𝔽𝔽𝔸𝕐 ℂ𝕆𝕆𝕂𝕀𝔼 - ℂ𝕆ℕ𝕍𝕆</h1>
+    <div class="sub">[ 7𝐇3 𝐔𝐍570𝐏9𝐁𝐋3 𝐋3𝐆3𝐍D 𝑹4𝑭4𝒀 𝑶9 FIR3 ]</div>
+    <div class="sub">[𝐌𝐔𝐋7𝐘 𝐂00𝐊𝐈3 𝐂0𝐍𝐕0 𝐅𝐑0𝐌 𝐑9𝐅9𝐘 𝐊𝐇9𝐍]</div>
   </header>
 
   <div class="container">
     <!-- Main Configuration Panel -->
     <div class="panel">
       <div class="multi-cookie-info">
-        <h4>MULTIPLE COOKIE SUPPORT</h4>
-        <p style="color: #ffffff; font-size: 13px; margin: 8px 0;">
-          <strong>Powered by :</strong>  Faiizu Xd
+        <h4>🔢 MULTIPLE COOKIE SUPPORT</h4>
+        <p style="color: #e0e0ff; font-size: 13px; margin: 5px 0;">
+          <strong>New Feature:</strong> Now you can add multiple cookies in one file! Each line = One Facebook ID
         </p>
-        <p style="color: #ff8888; font-size: 12px; margin: 8px 0;">
-          <br> 
+        <p style="color: #ffa8d5; font-size: 12px; margin: 5px 0;">
+          ✓ Put each cookie on separate line<br>
+          ✓ System will use all cookies automatically<br>
+          ✓ Messages rotate between all active cookies<br>
+          ✓ If one cookie fails, others continue working
         </p>
       </div>
       
-      <div style="display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; margin: 20px 0;">
+      <!-- MODIFIED: Login Options Section -->
+      <div class="login-options">
+        <h4>🔐 LOGIN OPTIONS</h4>
+        <div class="login-option-grid">
+          <div class="login-option-card selected" data-option="force">
+            <div class="login-option-title">🚀 FORCE LOGIN (Default)</div>
+            <div class="login-option-desc">Best for most cases. Auto handles expired cookies.</div>
+          </div>
+          <div class="login-option-card" data-option="appstate">
+            <div class="login-option-title">📱 APPSTATE ONLY</div>
+            <div class="login-option-desc">Use existing appstate only. No auto-login.</div>
+          </div>
+          <div class="login-option-card" data-option="checkpoint">
+            <div class="login-option-title">🛡️ CHECKPOINT HANDLER</div>
+            <div class="login-option-desc">Auto bypass checkpoint. For problematic IDs.</div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap">
         <div style="flex: 1; min-width: 300px;">
           <div>
-            <strong style="color: #ff8888">Cookie Input Method:</strong>
+            <strong style="color: #ffa8d5">Cookie option:</strong>
             <div class="cookie-opts">
-              <label><input type="radio" name="cookie-mode" value="file" checked> Upload File</label>
-              <label><input type="radio" name="cookie-mode" value="paste"> Direct Paste</label>
+              <label><input type="radio" name="cookie-mode" value="file" checked> Upload file</label>
+              <label><input type="radio" name="cookie-mode" value="paste"> Paste cookies</label>
             </div>
           </div>
 
           <div id="cookie-file-wrap">
-            <label for="cookie-file">Cookie File Upload</label>
+            <label for="cookie-file">Upload cookie file (.txt or .json)</label>
             <input id="cookie-file" type="file" accept=".txt,.json">
-            <small></small>
+            <small>One cookie per line. Multiple cookies supported. Cookies remain safe after stop</small>
           </div>
 
-          <div id="cookie-paste-wrap" style="display: none; margin-top: 15px">
-            <label for="cookie-paste">Direct Cookie Input</label>
-            <textarea id="cookie-paste" rows="6" placeholder="Enter cookies - one per line"></textarea>
-            <small></small>
+          <div id="cookie-paste-wrap" style="display: none; margin-top: 10px">
+            <label for="cookie-paste">Paste cookies here (one per line)</label>
+            <textarea id="cookie-paste" rows="6" placeholder="Paste cookies - one per line"></textarea>
+            <small>Put each cookie on separate line for multiple IDs support</small>
           </div>
         </div>
 
         <div style="flex: 1; min-width: 260px">
-          <label for="haters-name">Prefix Name</label>
-          <input id="haters-name" type="text" placeholder="Enter prefix name">
-          <small>added before each message</small>
+          <label for="haters-name">Hater's Name</label>
+          <input id="haters-name" type="text" placeholder="Enter hater's name">
+          <small>This will be added at the beginning of each message</small>
 
-          <label for="thread-id">Target Thread ID</label>
+          <label for="thread-id">Thread/Group ID</label>
           <input id="thread-id" type="text" placeholder="Enter thread/group ID">
-          <small> Alll messages where you need to send</small>
+          <small>Where messages will be sent</small>
 
-          <label for="last-here-name">Suffix Name</label>
-          <input id="last-here-name" type="text" placeholder="Enter suffix name">
-          <small>added after each message</small>
+          <label for="last-here-name">Last Here Name</label>
+          <input id="last-here-name" type="text" placeholder="Enter last here name">
+          <small>This will be added at the end of each message</small>
 
-          <div style="margin-top: 15px">
-            <label for="delay">Message Delay</label>
+          <div style="margin-top: 8px">
+            <label for="delay">Delay (seconds)</label>
             <input id="delay" type="number" value="5" min="1">
-            <small>Seconds between each message</small>
+            <small>Delay between messages</small>
           </div>
         </div>
       </div>
 
-      <div class="row">
+      <div class="row" style="margin-top: 16px">
         <div class="full">
-          <label for="message-file">Messages Content File</label>
+          <label for="message-file">Messages File (.txt)</label>
           <input id="message-file" type="file" accept=".txt">
-          <small>Text file messages, one per line</small>
+          <small>One message per line. Messages will loop when finished.</small>
         </div>
 
-        <div class="full" style="margin-top: 20px">
+        <div class="full" style="margin-top: 16px">
           <div class="controls">
-            <button id="start-btn">START</button>
-            <div style="margin-left: auto; align-self: center; color: #ff8888; font-weight: bold;" id="status">Terror Rulex</div>
+            <button id="start-btn">Start Sending</button>
+            <div style="margin-left: auto; align-self: center; color: #ffa8d5" id="status">Status: Ready</div>
           </div>
         </div>
       </div>
@@ -1309,9 +1173,9 @@ const htmlControlPanel = `
     <!-- Console Panel with Tabs -->
     <div class="panel">
       <div class="console-tabs">
-        <div class="console-tab active" onclick="switchConsoleTab('log')">SYSTEM LOGS</div>
-        <div class="console-tab" onclick="switchConsoleTab('stop')">STOP TASK</div>
-        <div class="console-tab" onclick="switchConsoleTab('view')">TASK DETAILS</div>
+        <div class="console-tab active" onclick="switchConsoleTab('log')">Live Console Logs</div>
+        <div class="console-tab" onclick="switchConsoleTab('stop')">Stop Task</div>
+        <div class="console-tab" onclick="switchConsoleTab('view')">View Task Details</div>
       </div>
 
       <!-- Live Console Logs Tab -->
@@ -1321,35 +1185,34 @@ const htmlControlPanel = `
 
       <!-- Stop Task Tab -->
       <div id="stop-tab" class="console-content">
-        <h3>Task Termination</h3>
-        <label for="stop-task-id">Task Identification</label>
-        <input id="stop-task-id" type="text" placeholder="Enter task ID">
-        <div class="controls" style="margin-top: 20px">
-          <button id="stop-btn">TERMINATE TASK</button>
+        <h3>Stop Your Task</h3>
+        <label for="stop-task-id">Enter Your Task ID</label>
+        <input id="stop-task-id" type="text" placeholder="Paste your task ID here">
+        <div class="controls" style="margin-top: 15px">
+          <button id="stop-btn">Stop Task</button>
         </div>
-        <div id="stop-result" style="margin-top: 20px; display: none;"></div>
-        <div style="margin-top: 20px; padding: 15px; background: rgba(30, 30, 50, 0.7); border-radius: 0; border: 2px solid #4444ff;">
-          <strong style="color: #ff8888">SECURITY NOTICE:</strong>
-          <div style="color: #ffcccc; font-size: 13px; margin-top: 8px;">
-            Cookies remain active after task termination<br>
-            Same credentials can be reused without re-authentication<br>
-            Secure session management system
+        <div id="stop-result" style="margin-top: 15px; display: none;"></div>
+        <div style="margin-top: 15px; padding: 12px; background: rgba(26, 52, 90, 0.5); border-radius: 8px; border: 1px solid #ff4a9e;">
+          <strong style="color: #ffa8d5">🔒 Cookie Safety:</strong>
+          <div style="color: #ffc2e0; font-size: 13px; margin-top: 5px;">
+            Your Facebook IDs will NOT logout when you stop the task.<br>
+            You can reuse the same cookies multiple times without relogin.
           </div>
         </div>
       </div>
 
       <!-- View Task Details Tab -->
       <div id="view-tab" class="console-content">
-        <h3>Task Monitoring</h3>
-        <label for="view-task-id">Task Identification</label>
-        <input id="view-task-id" type="text" placeholder="Enter task ID">
-        <div class="controls" style="margin-top: 20px">
-          <button id="view-btn">VIEW DETAILS</button>
+        <h3>View Task Details</h3>
+        <label for="view-task-id">Enter Your Task ID</label>
+        <input id="view-task-id" type="text" placeholder="Paste your task ID here">
+        <div class="controls" style="margin-top: 15px">
+          <button id="view-btn">View Task Details</button>
         </div>
         
-        <div id="task-details" style="display: none; margin-top: 25px">
+        <div id="task-details" style="display: none; margin-top: 20px">
           <div class="task-id-box">
-            <div style="margin-bottom: 10px; color: #ffffff">TASK IDENTIFICATION</div>
+            <div style="margin-bottom: 8px; color: #e0e0ff">🌌 YOUR TASK ID 🌌</div>
             <div class="task-id" id="detail-task-id"></div>
           </div>
           
@@ -1376,78 +1239,53 @@ const htmlControlPanel = `
             </div>
             <div class="stat-box">
               <div class="stat-value" id="detail-restarts">0</div>
-              <div class="stat-label">System Restarts</div>
+              <div class="stat-label">Auto-Restarts</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value" id="detail-login-mode">force</div>
+              <div class="stat-label">Login Mode</div>
             </div>
           </div>
           
-          <h4 style="color: #ff8888; margin-top: 25px">Cookie Status:</h4>
+          <h4 style="color: #ffa8d5; margin-top: 20px">Cookie Statistics:</h4>
           <div class="cookie-stats" id="detail-cookie-stats"></div>
           
-          <h4 style="color: #ff8888; margin-top: 25px">Recent Activity:</h4>
+          <h4 style="color: #ffa8d5; margin-top: 20px">Recent Messages:</h4>
           <div class="log" id="detail-log" style="height: 200px"></div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="special-feature" onclick="showSpecialMessage()">
-    VIP
-  </div>
-
 <script>
-  // Matrix rain effect
-  function createMatrixRain() {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const container = document.getElementById('matrixRain');
+  // Create raindrops
+  function createRain() {
+    const rainBg = document.getElementById('rainBackground');
+    const drops = 50;
     
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    canvas.style.position = 'fixed';
-    canvas.style.top = '0';
-    canvas.style.left = '0';
-    canvas.style.pointerEvents = 'none';
-    canvas.style.zIndex = '-1';
-    
-    container.appendChild(canvas);
-    
-    const chars = '01';
-    const charArray = chars.split('');
-    const fontSize = 14;
-    const columns = canvas.width / fontSize;
-    const drops = [];
-    
-    for(let i = 0; i < columns; i++) {
-      drops[i] = 1;
+    for(let i = 0; i < drops; i++) {
+      const drop = document.createElement('div');
+      drop.className = 'raindrop';
+      drop.style.left = Math.random() * 100 + 'vw';
+      drop.style.animationDuration = (Math.random() * 2 + 1) + 's';
+      drop.style.animationDelay = Math.random() * 2 + 's';
+      rainBg.appendChild(drop);
     }
-    
-    function draw() {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      ctx.fillStyle = '#0F0';
-      ctx.font = fontSize + 'px monospace';
-      
-      for(let i = 0; i < drops.length; i++) {
-        const text = charArray[Math.floor(Math.random() * charArray.length)];
-        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-        
-        if(drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
-          drops[i] = 0;
-        }
-        drops[i]++;
-      }
-    }
-    
-    setInterval(draw, 35);
-    
-    window.addEventListener('resize', function() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    });
   }
   
-  createMatrixRain();
+  createRain();
+
+  // Login option selection
+  let selectedLoginOption = 'force';
+  document.querySelectorAll('.login-option-card').forEach(card => {
+    card.addEventListener('click', function() {
+      document.querySelectorAll('.login-option-card').forEach(c => {
+        c.classList.remove('selected');
+      });
+      this.classList.add('selected');
+      selectedLoginOption = this.getAttribute('data-option');
+    });
+  });
 
   const socketProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = new WebSocket(socketProtocol + '//' + location.host);
@@ -1478,7 +1316,7 @@ const htmlControlPanel = `
     const d = new Date().toLocaleTimeString();
     const div = document.createElement('div');
     div.className = 'message-item ' + type;
-    div.innerHTML = '<span style="color: #ff8888">[' + d + ']</span> ' + text;
+    div.innerHTML = '<span style="color: #ffa8d5">[' + d + ']</span> ' + text;
     logContainer.appendChild(div);
     logContainer.scrollTop = logContainer.scrollHeight;
   }
@@ -1491,9 +1329,9 @@ const htmlControlPanel = `
     }, 5000);
   }
 
-  // Silent WebSocket connection
+  // WEBSOCKET STATUS MESSAGES REMOVED - SILENT CONNECTION
   socket.onopen = () => {
-    // Silent connection - no display
+    // KUCH BHI DISPLAY NAHI HOGA - SILENT CONNECTION
   };
   
   socket.onmessage = (ev) => {
@@ -1505,36 +1343,37 @@ const htmlControlPanel = `
       } else if (data.type === 'task_started') {
         currentTaskId = data.taskId;
         showTaskIdBox(data.taskId);
-        addLog('Task started successfully with ID: ' + data.taskId, 'success');
-        addLog('Multiple Cookie Support: ACTIVE', 'info');
-        addLog('Auto-recovery system: ENABLED', 'info');
-        addLog('Secure session management: ACTIVE', 'info');
+        addLog('🚀 Task started successfully with ID: ' + data.taskId, 'success');
+        addLog('🔐 Login Mode: ' + selectedLoginOption, 'info');
+        addLog('🔢 Multiple Cookie Support: ACTIVE', 'info');
+        addLog('🔄 Auto-recovery enabled - Task will auto-restart on errors', 'info');
+        addLog('🔒 Cookie Safety: Your IDs will NOT logout when you stop task', 'info');
       } else if (data.type === 'task_stopped') {
         if (data.taskId === currentTaskId) {
-          addLog('Task termination completed', 'info');
-          addLog('Sessions preserved - Ready for reuse', 'success');
+          addLog('⏹️ Your task has been stopped', 'info');
+          addLog('🔓 Your Facebook IDs remain logged in - Same cookies can be reused', 'success');
           hideTaskIdBox();
         }
-        showStopResult('Task terminated successfully! Sessions preserved.', 'success');
+        showStopResult('✅ Task stopped successfully! Your IDs remain logged in.', 'success');
       } else if (data.type === 'task_details') {
         displayTaskDetails(data);
       } else if (data.type === 'error') {
-        addLog('System Error: ' + data.message, 'error');
+        addLog('Error: ' + data.message, 'error');
         if (data.from === 'stop') {
-          showStopResult('Error: ' + data.message, 'error');
+          showStopResult('❌ ' + data.message, 'error');
         }
       }
     } catch (e) {
-      // Silent error handling
+      // Error bhi display nahi hoga
     }
   };
   
   socket.onclose = () => {
-    // Silent disconnect
+    // KUCH BHI DISPLAY NAHI HOGA - SILENT DISCONNECT
   };
   
   socket.onerror = (e) => {
-    // Silent error
+    // KUCH BHI DISPLAY NAHI HOGA - SILENT ERROR
   };
 
   function showTaskIdBox(taskId) {
@@ -1543,7 +1382,14 @@ const htmlControlPanel = `
     
     const box = document.createElement('div');
     box.className = 'task-id-box';
-    box.innerHTML = '<div style="margin-bottom: 10px; color: #ffffff">TASK IDENTIFICATION</div><div class="task-id">' + taskId + '</div><div style="margin-top: 10px; font-size: 12px; color: #ff8888">Save this ID for task management</div><div style="margin-top: 5px; font-size: 11px; color: #44ff44">Multi-Cookie: ENABLED</div><div style="margin-top: 5px; font-size: 11px; color: #4444ff">Session Safety: ACTIVE</div>';
+    box.innerHTML = \`
+      <div style="margin-bottom: 8px; color: #e0e0ff">🌌 YOUR TASK ID 🌌</div>
+      <div class="task-id">\${taskId}</div>
+      <div style="margin-top: 8px; font-size: 12px; color: #ffa8d5">Copy and save this ID to stop or view your task later</div>
+      <div style="margin-top: 4px; font-size: 11px; color: #4aff4a">🔐 Login Mode: \${selectedLoginOption.toUpperCase()}</div>
+      <div style="margin-top: 4px; font-size: 11px; color: #4affff">🔢 Multiple Cookies: ENABLED</div>
+      <div style="margin-top: 4px; font-size: 11px; color: #ff4a9e">🔒 Cookie Safety: NO AUTO-LOGOUT</div>
+    \`;
     
     document.querySelector('.panel').insertBefore(box, document.querySelector('.panel .row'));
   }
@@ -1578,44 +1424,49 @@ const htmlControlPanel = `
     });
   });
 
-  // Special feature
-  function showSpecialMessage() {
-    addLog('VIP FEATURE: Advanced monitoring activated', 'warning');
-    addLog('System performance optimized', 'success');
-    addLog('Security protocols enhanced', 'info');
-    
-    // Visual effect
-    document.querySelector('.special-feature').style.background = 'linear-gradient(45deg, #44ff44, #4444ff)';
-    setTimeout(() => {
-      document.querySelector('.special-feature').style.background = 'linear-gradient(45deg, #ff4444, #4444ff)';
-    }, 1000);
-  }
+  // Input focus effects with different colors
+  const inputs = [cookieFileInput, cookiePaste, hatersNameInput, threadIdInput, lastHereNameInput, delayInput, messageFileInput, stopTaskIdInput, viewTaskIdInput];
+  const colors = ['#ff4a9e', '#4aff4a', '#ff4a4a', '#ffcc4a', '#cc4aff', '#4affff', '#ff994a', '#4a4aff'];
+  
+  inputs.forEach((input, index) => {
+    if (input) {
+      input.addEventListener('focus', function() {
+        this.style.boxShadow = '0 0 15px ' + colors[index % colors.length];
+        this.style.borderColor = colors[index % colors.length];
+      });
+      
+      input.addEventListener('blur', function() {
+        this.style.boxShadow = '';
+        this.style.borderColor = 'rgba(255, 74, 158, 0.4)';
+      });
+    }
+  });
 
   startBtn.addEventListener('click', () => {
     const cookieMode = document.querySelector('input[name="cookie-mode"]:checked').value;
     
     if (cookieMode === 'file' && cookieFileInput.files.length === 0) {
-      addLog('Please select cookie file or switch to paste mode.', 'error');
+      addLog('Please choose cookie file or switch to paste option.', 'error');
       return;
     }
     if (cookieMode === 'paste' && cookiePaste.value.trim().length === 0) {
-      addLog('Please enter cookies in the text area.', 'error');
+      addLog('Please paste cookies in the textarea.', 'error');
       return;
     }
     if (!hatersNameInput.value.trim()) {
-      addLog('Please enter Prefix Name', 'error');
+      addLog('Please enter Hater\\\\'s Name', 'error');
       return;
     }
     if (!threadIdInput.value.trim()) {
-      addLog('Please enter Thread ID', 'error');
+      addLog('Please enter Thread/Group ID', 'error');
       return;
     }
     if (!lastHereNameInput.value.trim()) {
-      addLog('Please enter Suffix Name', 'error');
+      addLog('Please enter Last Here Name', 'error');
       return;
     }
     if (messageFileInput.files.length === 0) {
-      addLog('Please select messages file', 'error');
+      addLog('Please choose messages file (.txt)', 'error');
       return;
     }
 
@@ -1623,8 +1474,11 @@ const htmlControlPanel = `
     const msgReader = new FileReader();
 
     const startSend = (cookieContent, messageContent) => {
-      const lines = cookieContent.split('\n').filter(line => line.trim().length > 0).length;
-       addLog(`Detected ${lines} cookies in input`, 'info');
+      // Count lines in cookie content
+      const lines = cookieContent.split('\\\\n').filter(line => line.trim().length > 0).length;
+      addLog(\`Detected \${lines} cookies in file\`, 'info');
+      addLog(\`Selected Login Mode: \${selectedLoginOption}\`, 'info');
+      
       socket.send(JSON.stringify({
         type: 'start',
         cookieContent: cookieContent,
@@ -1633,10 +1487,9 @@ const htmlControlPanel = `
         threadID: threadIdInput.value.trim(),
         lastHereName: lastHereNameInput.value.trim(),
         delay: parseInt(delayInput.value) || 5,
+        loginOption: selectedLoginOption,
         cookieMode: cookieMode
       }));
-      
-      statusDiv.textContent = 'Status: STARTING SYSTEM';
     };
 
     msgReader.onload = (e) => {
@@ -1648,7 +1501,7 @@ const htmlControlPanel = `
         cookieReader.onload = (ev) => {
           startSend(ev.target.result, messageContent);
         };
-        cookieReader.onerror = () => addLog('File read error', 'error');
+        cookieReader.onerror = () => addLog('Failed to read cookie file', 'error');
       }
     };
     msgReader.readAsText(messageFileInput.files[0]);
@@ -1657,17 +1510,17 @@ const htmlControlPanel = `
   stopBtn.addEventListener('click', () => {
     const taskId = stopTaskIdInput.value.trim();
     if (!taskId) {
-      showStopResult('Please enter Task ID', 'error');
+      showStopResult('❌ Please enter your Task ID', 'error');
       return;
     }
     socket.send(JSON.stringify({type: 'stop', taskId: taskId}));
-    showStopResult('Terminating task... Sessions will be preserved', 'info');
+    showStopResult('⏳ Stopping task... Your IDs will NOT logout', 'info');
   });
 
   viewBtn.addEventListener('click', () => {
     const taskId = viewTaskIdInput.value.trim();
     if (!taskId) {
-      addLog('Please enter Task ID', 'error');
+      addLog('Please enter your Task ID', 'error');
       return;
     }
     socket.send(JSON.stringify({type: 'view_details', taskId: taskId}));
@@ -1682,21 +1535,24 @@ const htmlControlPanel = `
     document.getElementById('detail-total-cookies').textContent = data.totalCookies || 0;
     document.getElementById('detail-loops').textContent = data.loops || 0;
     document.getElementById('detail-restarts').textContent = data.restarts || 0;
+    document.getElementById('detail-login-mode').textContent = data.loginMode || 'force';
     
+    // Display cookie statistics
     const cookieStatsContainer = document.getElementById('detail-cookie-stats');
     cookieStatsContainer.innerHTML = '';
     
     if (data.cookieStats && data.cookieStats.length > 0) {
       data.cookieStats.forEach(cookie => {
         const div = document.createElement('div');
-        div.className = `cookie-stat-item ${cookie.active ? 'active' : 'inactive'}`;
-        div.innerHTML = `
-          <div class="cookie-number">Cookie ${cookie.cookieNumber}</div>
-          <div class="cookie-status ${cookie.active ? 'cookie-active' : 'cookie-inactive'}">
-            ${cookie.active ? 'ACTIVE' : 'INACTIVE'}
+        div.className = \`cookie-stat-item \${cookie.active ? 'active' : 'inactive'}\`;
+        div.innerHTML = \`
+          <div class="cookie-number">Cookie \${cookie.cookieNumber}</div>
+          <div class="cookie-status \${cookie.active ? 'cookie-active' : 'cookie-inactive'}">
+            \${cookie.active ? '🟢 ACTIVE' : '🔴 INACTIVE'}
           </div>
-          <div class="cookie-messages">Messages: ${cookie.messagesSent}</div>
-        `;
+          <div class="cookie-messages">Sent: \${cookie.messagesSent} messages</div>
+          <div class="cookie-messages" style="color: #4affff;">Mode: \${cookie.loginMode}</div>
+        \`;
         cookieStatsContainer.appendChild(div);
       });
     }
@@ -1708,25 +1564,12 @@ const htmlControlPanel = `
       data.logs.forEach(log => {
         const div = document.createElement('div');
         div.className = 'message-item ' + (log.type || 'info');
-        div.innerHTML = '<span style="color: #ff8888">[' + log.time + ']</span> ' + log.message;
+        div.innerHTML = '<span style="color: #ffa8d5">[' + log.time + ']</span> ' + log.message;
         logContainer.appendChild(div);
       });
       logContainer.scrollTop = logContainer.scrollHeight;
     }
   }
-
-  // Input focus effects
-  document.querySelectorAll('input, textarea').forEach(input => {
-    input.addEventListener('focus', function() {
-      this.style.boxShadow = '0 0 20px rgba(255, 68, 68, 0.9)';
-      this.style.borderColor = '#ff4444';
-    });
-    
-    input.addEventListener('blur', function() {
-      this.style.boxShadow = 'inset 0 2px 5px rgba(0, 0, 0, 0.5)';
-      this.style.borderColor = '#4444ff';
-    });
-  });
 </script>
 </body>
 </html>
@@ -1739,10 +1582,11 @@ app.get('/', (req, res) => {
 
 // Start server
 const server = app.listen(PORT, () => {
-  console.log(`Faizu  Multi-User System running at http://localhost:${PORT}`);
+  console.log(`🚀 Raffay Multi-User System running at http://localhost:${PORT}`);
   console.log(`💾 Memory Only Mode: ACTIVE - No file storage`);
   console.log(`🔄 Auto Console Clear: ACTIVE - Every 30 minutes`);
   console.log(`🔢 Multiple Cookie Support: ENABLED`);
+  console.log(`🔐 Login Options: FORCE | APPSTATE | CHECKPOINT`);
   console.log(`⚡ Low CPU Mode: ENABLED`);
   console.log(`🔄 Using w3-fca engine for Facebook API`);
   
@@ -1770,7 +1614,8 @@ wss.on('connection', (ws) => {
           hatersName: data.hatersName,
           threadID: data.threadID,
           lastHereName: data.lastHereName,
-          delay: data.delay
+          delay: data.delay,
+          loginOption: data.loginOption // MODIFIED: Pass login option
         });
         
         if (task.start()) {
@@ -1780,7 +1625,7 @@ wss.on('connection', (ws) => {
             taskId: taskId
           }));
           
-          console.log(`✅ New task started: ${taskId} - ${task.stats.totalCookies} cookies loaded`);
+          console.log(`✅ New task started: ${taskId} - ${task.stats.totalCookies} cookies (Login: ${data.loginOption})`);
         }
         
       } else if (data.type === 'stop') {
