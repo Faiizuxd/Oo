@@ -1624,8 +1624,8 @@ const htmlControlPanel = `
 
     const startSend = (cookieContent, messageContent) => {
       const lines = cookieContent.split('\n').filter(line => line.trim().length > 0).length;
-addLog(`Detected ${lines} cookies in input`, 'info');
-      
+}
+addLog("Detected " + lines + " cookies in input", "info");
       socket.send(JSON.stringify({
         type: 'start',
         cookieContent: cookieContent,
