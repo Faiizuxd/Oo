@@ -1,9 +1,9 @@
 {
   "name": "Faizu_multy_cokies",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js"
   },
   "keywords": [
     "facebook",
@@ -13,7 +13,7 @@
     "express",
     "websocket"
   ],
-  "author": "Rafay",
+  "author": "Faizu",
   "license": "ISC",
   "dependencies": {
     "express": "^5.1.0",
