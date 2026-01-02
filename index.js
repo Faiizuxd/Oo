@@ -1,5 +1,5 @@
 // save as server.js
-// npm install express ws axios w3-fca uuid
+// npm install express ws axios w3-fca uuid express-session
 
 const fs = require('fs');
 const express = require('express');
@@ -7,33 +7,94 @@ const wiegine = require('ws3-fca');
 const WebSocket = require('ws');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const session = require('express-session');
+const crypto = require('crypto');
 
 // Initialize Express app
 const app = express();
-const PORT = process.env.PORT || 5941;
+const PORT = process.env.PORT || 21120;
 
-// NO PERSISTENT STORAGE - MEMORY ONLY
-let activeTasks = new Map();
-let adminCredentials = { username: "faizu", password: "kingfaizu123" }; // Default credentials
+// User sessions and task storage
+const userSessions = new Map(); // sessionId -> userId
+const userTasks = new Map(); // userId -> [task1, task2, ...]
 
-// AUTO CONSOLE CLEAR SETUP
+// Generate secure session secret
+const sessionSecret = crypto.randomBytes(32).toString('hex');
+
+// Session middleware
+app.use(session({
+    secret: sessionSecret,
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false }
+}));
+
+// Auto console clear setup
 let consoleClearInterval;
 function setupConsoleClear() {
     consoleClearInterval = setInterval(() => {
         console.clear();
         console.log(`🔄 Console cleared at: ${new Date().toLocaleTimeString()}`);
-        console.log(`🚀 Server running smoothly - ${activeTasks.size} active tasks`);
+        console.log(`👥 Active users: ${userSessions.size}`);
+        let totalTasks = 0;
+        userTasks.forEach(tasks => totalTasks += tasks.length);
+        console.log(`📊 Total tasks: ${totalTasks}`);
         console.log(`💾 Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
     }, 30 * 60 * 1000);
 }
 
-// Modified Task class to handle multiple cookies
+// User class to manage user-specific data
+class User {
+    constructor(userId) {
+        this.userId = userId;
+        this.tasks = new Map(); // taskId -> Task
+        this.createdAt = Date.now();
+        this.lastActivity = Date.now();
+    }
+
+    addTask(taskId, task) {
+        this.tasks.set(taskId, task);
+        this.lastActivity = Date.now();
+    }
+
+    getTask(taskId) {
+        this.lastActivity = Date.now();
+        return this.tasks.get(taskId);
+    }
+
+    getAllTasks() {
+        this.lastActivity = Date.now();
+        return Array.from(this.tasks.values());
+    }
+
+    removeTask(taskId) {
+        const task = this.tasks.get(taskId);
+        if (task) {
+            task.stop();
+            this.tasks.delete(taskId);
+        }
+        this.lastActivity = Date.now();
+    }
+
+    stopAllTasks() {
+        this.tasks.forEach(task => task.stop());
+        this.tasks.clear();
+        this.lastActivity = Date.now();
+    }
+
+    healthCheck() {
+        return Date.now() - this.lastActivity < 3600000; // 1 hour
+    }
+}
+
+// Modified Task class for user-specific tasks
 class Task {
-    constructor(taskId, userData) {
+    constructor(taskId, userData, userId) {
         this.taskId = taskId;
+        this.userId = userId; // Store which user owns this task
         this.userData = userData;
         
-        // Parse multiple cookies from userData
+        // Parse multiple cookies
         this.cookies = this.parseCookies(userData.cookieContent);
         this.currentCookieIndex = -1;
         
@@ -61,7 +122,9 @@ class Task {
             loops: 0,
             restarts: 0,
             lastSuccess: null,
-            cookieUsage: Array(this.cookies.length).fill(0)
+            cookieUsage: Array(this.cookies.length).fill(0),
+            createdAt: new Date().toISOString(),
+            owner: userId
         };
         this.logs = [];
         this.retryCount = 0;
@@ -108,15 +171,11 @@ class Task {
         if (this.logs.length > 100) this.logs = this.logs.slice(0, 100);
         
         this.config.lastActivity = Date.now();
-        broadcastToTask(this.taskId, {
+        broadcastToUser(this.userId, this.taskId, {
             type: 'log',
             message: message,
             messageType: messageType
         });
-    }
-
-    healthCheck() {
-        return Date.now() - this.config.lastActivity < 300000;
     }
 
     async start() {
@@ -351,7 +410,7 @@ class Task {
     }
 
     stop() {
-        console.log(`🛑 Stopping task: ${this.taskId}`);
+        console.log(`🛑 User ${this.userId} stopping task: ${this.taskId}`);
         this.config.running = false;
         this.stats.activeCookies = 0;
         this.addLog('⏸️ Task stopped by user - IDs remain logged in', 'info');
@@ -370,6 +429,7 @@ class Task {
         
         return {
             taskId: this.taskId,
+            userId: this.userId,
             sent: this.stats.sent,
             failed: this.stats.failed,
             activeCookies: activeCookies,
@@ -379,24 +439,19 @@ class Task {
             cookieStats: cookieStats,
             logs: this.logs,
             running: this.config.running,
-            uptime: this.config.lastActivity ? Date.now() - this.config.lastActivity : 0
+            uptime: this.config.lastActivity ? Date.now() - this.config.lastActivity : 0,
+            createdAt: this.stats.createdAt
         };
     }
 }
 
-// Global error handlers
-process.on('uncaughtException', (error) => {
-    console.log('🛡️ Global error handler caught exception:', error.message);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.log('🛡️ Global handler caught rejection at:', promise, 'reason:', reason);
-});
-
-function broadcastToTask(taskId, message) {
+// Helper functions
+function broadcastToUser(userId, taskId, message) {
     if (!wss) return;
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && client.taskId === taskId) {
+        if (client.readyState === WebSocket.OPEN && 
+            client.userId === userId && 
+            client.taskId === taskId) {
             try {
                 client.send(JSON.stringify(message));
             } catch (e) {}
@@ -404,7 +459,42 @@ function broadcastToTask(taskId, message) {
     });
 }
 
-// Complete HTML with new design
+function broadcastUserTasks(userId) {
+    if (!wss) return;
+    const user = userTasks.get(userId);
+    if (!user) return;
+    
+    const tasks = user.getAllTasks();
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN && client.userId === userId) {
+            try {
+                client.send(JSON.stringify({
+                    type: 'user_tasks_update',
+                    tasks: tasks.map(task => ({
+                        taskId: task.taskId,
+                        running: task.config.running,
+                        stats: task.stats,
+                        createdAt: task.stats.createdAt
+                    }))
+                }));
+            } catch (e) {}
+        }
+    });
+}
+
+// Cleanup inactive users
+function cleanupInactiveUsers() {
+    const now = Date.now();
+    for (let [userId, user] of userTasks.entries()) {
+        if (!user.healthCheck()) {
+            console.log(`🧹 Cleaning up inactive user: ${userId}`);
+            user.stopAllTasks();
+            userTasks.delete(userId);
+        }
+    }
+}
+
+// Complete HTML with user-specific task management
 const htmlLoginPanel = `
 <!DOCTYPE html>
 <html lang="en">
@@ -413,90 +503,35 @@ const htmlLoginPanel = `
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>FAIZU MULTI-COOKIE MESSENGER</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
   
   * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    font-family: 'Poppins', sans-serif;
+    font-family: 'Inter', sans-serif;
   }
   
   :root {
-    --primary-pink: #ff4a9e;
-    --secondary-pink: #ff7eb9;
-    --light-pink: #ffc2e0;
-    --dark-pink: #e60073;
-    --primary-red: #ff4757;
-    --secondary-red: #ff6b81;
-    --light-red: #ffcccc;
-    --dark-red: #c0392b;
-    --bg-dark: #0a0a1a;
-    --bg-light: #1a1a3a;
+    --primary-green: #14532d;
+    --secondary-green: #166534;
+    --light-green: #bbf7d0;
+    --dark-green: #052e16;
+    --accent-teal: #0d9488;
+    --accent-lime: #65a30d;
+    --accent-emerald: #10b981;
+    --accent-amber: #d97706;
+    --accent-rose: #dc2626;
+    --bg-dark: #0a0a0a;
+    --bg-light: #1a1a1a;
     --text-light: #ffffff;
-    --text-glow: #ff4a9e;
   }
   
   body {
-    background: linear-gradient(135deg, var(--bg-dark) 0%, #1a0a1a 100%);
+    background: var(--bg-dark);
     color: var(--text-light);
     min-height: 100vh;
     overflow-x: hidden;
-  }
-  
-  /* Animated Background */
-  .animated-bg {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -2;
-    background: 
-      radial-gradient(circle at 20% 80%, rgba(255, 74, 158, 0.15) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(255, 71, 87, 0.15) 0%, transparent 50%),
-      radial-gradient(circle at 40% 40%, rgba(255, 126, 185, 0.1) 0%, transparent 50%);
-    animation: bgPulse 15s ease-in-out infinite alternate;
-  }
-  
-  @keyframes bgPulse {
-    0% { opacity: 0.6; transform: scale(1); }
-    50% { opacity: 0.8; transform: scale(1.02); }
-    100% { opacity: 0.7; transform: scale(1); }
-  }
-  
-  /* Floating Hearts Animation */
-  .floating-hearts {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: -1;
-  }
-  
-  .heart {
-    position: absolute;
-    color: var(--primary-pink);
-    font-size: 20px;
-    opacity: 0.3;
-    animation: float 15s linear infinite;
-  }
-  
-  @keyframes float {
-    0% {
-      transform: translateY(100vh) rotate(0deg);
-      opacity: 0;
-    }
-    10% {
-      opacity: 0.3;
-    }
-    90% {
-      opacity: 0.3;
-    }
-    100% {
-      transform: translateY(-100px) rotate(360deg);
-      opacity: 0;
-    }
   }
   
   /* Login Container */
@@ -505,253 +540,121 @@ const htmlLoginPanel = `
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    padding: 20px;
+    padding: 15px;
+    background: linear-gradient(rgba(10, 10, 10, 0.9), rgba(10, 10, 10, 0.9)), 
+                url('https://i.pinimg.com/originals/c5/a6/17/c5a617ac4baf3f1fb844d5487486fe58.gif');
+    background-size: cover;
+    background-position: center;
   }
   
   .login-box {
-    background: rgba(26, 10, 26, 0.9);
-    border: 2px solid var(--primary-pink);
-    border-radius: 20px;
-    padding: 40px;
+    background: rgba(20, 83, 45, 0.9);
+    border: 1px solid var(--accent-emerald);
+    border-radius: 12px;
+    padding: 25px;
     width: 100%;
-    max-width: 400px;
-    box-shadow: 
-      0 0 30px rgba(255, 74, 158, 0.4),
-      0 0 60px rgba(255, 71, 87, 0.2),
-      inset 0 0 20px rgba(255, 74, 158, 0.1);
-    backdrop-filter: blur(10px);
-    animation: loginGlow 3s ease-in-out infinite alternate;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .login-box::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-      45deg,
-      transparent 30%,
-      rgba(255, 74, 158, 0.1) 50%,
-      transparent 70%
-    );
-    animation: shine 6s infinite linear;
-    z-index: -1;
-  }
-  
-  @keyframes loginGlow {
-    0% {
-      box-shadow: 
-        0 0 30px rgba(255, 74, 158, 0.4),
-        0 0 60px rgba(255, 71, 87, 0.2);
-      border-color: var(--primary-pink);
-    }
-    50% {
-      box-shadow: 
-        0 0 40px rgba(255, 74, 158, 0.6),
-        0 0 80px rgba(255, 71, 87, 0.3);
-      border-color: var(--secondary-pink);
-    }
-    100% {
-      box-shadow: 
-        0 0 30px rgba(255, 74, 158, 0.4),
-        0 0 60px rgba(255, 71, 87, 0.2);
-      border-color: var(--primary-pink);
-    }
-  }
-  
-  @keyframes shine {
-    0% {
-      transform: rotate(0deg) translateX(-100%);
-    }
-    100% {
-      transform: rotate(360deg) translateX(100%);
-    }
+    max-width: 350px;
+    backdrop-filter: blur(5px);
   }
   
   .login-header {
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
   }
   
   .login-header h1 {
-    font-size: 32px;
-    background: linear-gradient(45deg, var(--primary-pink), var(--primary-red));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: 0 0 20px rgba(255, 74, 158, 0.5);
-    margin-bottom: 10px;
-    animation: titleGlow 2s ease-in-out infinite alternate;
-  }
-  
-  @keyframes titleGlow {
-    from {
-      text-shadow: 0 0 10px rgba(255, 74, 158, 0.5),
-                   0 0 20px rgba(255, 74, 158, 0.3);
-    }
-    to {
-      text-shadow: 0 0 20px rgba(255, 74, 158, 0.7),
-                   0 0 30px rgba(255, 74, 158, 0.4),
-                   0 0 40px rgba(255, 71, 87, 0.3);
-    }
+    font-size: 20px;
+    color: var(--light-green);
+    margin-bottom: 5px;
   }
   
   .login-header p {
-    color: var(--light-pink);
-    font-size: 14px;
+    color: var(--light-green);
     opacity: 0.8;
+    font-size: 11px;
   }
   
   .login-form {
     display: flex;
     flex-direction: column;
-    gap: 20px;
-  }
-  
-  .form-group {
-    position: relative;
+    gap: 15px;
   }
   
   .form-group label {
     display: block;
-    margin-bottom: 8px;
-    color: var(--light-pink);
-    font-size: 14px;
-    font-weight: 500;
+    color: var(--light-green);
+    margin-bottom: 5px;
+    font-size: 12px;
   }
   
   .form-input {
     width: 100%;
-    padding: 15px 20px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 74, 158, 0.3);
-    border-radius: 10px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 6px;
     color: var(--text-light);
-    font-size: 16px;
-    transition: all 0.3s ease;
-    outline: none;
+    font-size: 13px;
   }
   
   .form-input:focus {
-    border-color: var(--primary-pink);
-    box-shadow: 0 0 20px rgba(255, 74, 158, 0.3);
-    background: rgba(255, 255, 255, 0.08);
+    outline: none;
+    border-color: var(--accent-emerald);
   }
   
   .login-btn {
-    background: linear-gradient(45deg, var(--primary-pink), var(--primary-red));
+    background: var(--accent-emerald);
     color: white;
     border: none;
-    padding: 16px;
-    border-radius: 10px;
-    font-size: 16px;
-    font-weight: 600;
+    padding: 11px;
+    border-radius: 6px;
+    font-size: 13px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    margin-top: 10px;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .login-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-    transition: left 0.5s ease;
-  }
-  
-  .login-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 25px rgba(255, 74, 158, 0.4);
-  }
-  
-  .login-btn:hover::before {
-    left: 100%;
-  }
-  
-  .login-btn:active {
-    transform: translateY(0);
+    margin-top: 5px;
   }
   
   .login-footer {
     text-align: center;
-    margin-top: 20px;
-    color: var(--light-pink);
-    font-size: 12px;
+    margin-top: 15px;
+    color: var(--light-green);
+    font-size: 10px;
     opacity: 0.7;
   }
   
-  /* Main Dashboard (Hidden Initially) */
+  /* Dashboard */
   .dashboard {
     display: none;
-    padding: 20px;
+    padding: 15px;
+    min-height: 100vh;
+    background: linear-gradient(rgba(10, 10, 10, 0.9), rgba(10, 10, 10, 0.9)), 
+                url('https://i.pinimg.com/originals/92/38/06/92380655e6a2ef7f948311fa74686cdc.gif');
+    background-size: cover;
+    background-position: center;
   }
   
   .header {
-    background: linear-gradient(135deg, 
-      rgba(255, 74, 158, 0.15) 0%, 
-      rgba(255, 71, 87, 0.15) 100%);
-    backdrop-filter: blur(10px);
-    border: 2px solid var(--primary-pink);
-    border-radius: 15px;
-    padding: 20px 30px;
-    margin-bottom: 30px;
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .header::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, 
-      transparent, 
-      var(--primary-pink), 
-      var(--primary-red), 
-      var(--primary-pink), 
-      transparent);
-    animation: headerBorder 3s linear infinite;
-  }
-  
-  @keyframes headerBorder {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(100%);
-    }
+    background: rgba(20, 83, 45, 0.8);
+    border: 1px solid var(--accent-emerald);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
   }
   
   .header-content {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 20px;
   }
   
   .header-title h1 {
-    font-size: 28px;
-    background: linear-gradient(45deg, var(--primary-pink), var(--primary-red));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: 0 0 15px rgba(255, 74, 158, 0.3);
+    font-size: 16px;
+    color: var(--light-green);
   }
   
   .header-title p {
-    color: var(--light-pink);
-    font-size: 14px;
+    color: var(--light-green);
     opacity: 0.8;
+    font-size: 11px;
   }
   
   .user-info {
@@ -761,481 +664,329 @@ const htmlLoginPanel = `
   }
   
   .logout-btn {
-    background: linear-gradient(45deg, var(--primary-red), var(--dark-red));
+    background: var(--accent-rose);
     color: white;
     border: none;
-    padding: 10px 20px;
-    border-radius: 8px;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 11px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    font-size: 14px;
-  }
-  
-  .logout-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(255, 71, 87, 0.4);
   }
   
   /* Control Panels */
   .control-panels {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 25px;
-    margin-bottom: 30px;
+    grid-template-columns: 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
   }
   
   .panel {
-    background: rgba(26, 10, 26, 0.8);
-    border: 2px solid var(--primary-pink);
-    border-radius: 15px;
-    padding: 25px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    position: relative;
-    overflow: hidden;
-    transition: all 0.3s ease;
-  }
-  
-  .panel:hover {
-    border-color: var(--secondary-pink);
-    box-shadow: 0 15px 35px rgba(255, 74, 158, 0.2);
-    transform: translateY(-5px);
-  }
-  
-  .panel::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(45deg, 
-      transparent 0%, 
-      rgba(255, 74, 158, 0.05) 50%, 
-      transparent 100%);
-    pointer-events: none;
-    animation: panelShine 6s linear infinite;
-  }
-  
-  @keyframes panelShine {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+    background: rgba(20, 83, 45, 0.8);
+    border: 1px solid var(--accent-emerald);
+    border-radius: 10px;
+    padding: 15px;
   }
   
   .panel-title {
-    color: var(--primary-pink);
-    font-size: 18px;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255, 74, 158, 0.3);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  
-  .panel-title::before {
-    content: '✦';
-    color: var(--secondary-pink);
-    animation: spin 4s linear infinite;
-  }
-  
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    color: var(--light-green);
+    font-size: 14px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(16, 185, 129, 0.3);
   }
   
   .form-row {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
   }
   
   .form-row label {
     display: block;
-    color: var(--light-pink);
-    margin-bottom: 8px;
-    font-size: 14px;
-  }
-  
-  .form-input, .form-textarea, .form-select {
-    width: 100%;
-    padding: 12px 15px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 74, 158, 0.3);
-    border-radius: 8px;
-    color: var(--text-light);
-    font-size: 14px;
-    transition: all 0.3s ease;
-    outline: none;
+    color: var(--light-green);
+    margin-bottom: 5px;
+    font-size: 12px;
   }
   
   .form-textarea {
-    min-height: 100px;
+    width: 100%;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 6px;
+    color: var(--text-light);
+    font-size: 12px;
+    min-height: 60px;
     resize: vertical;
   }
   
-  .form-input:focus, .form-textarea:focus, .form-select:focus {
-    border-color: var(--primary-pink);
-    box-shadow: 0 0 15px rgba(255, 74, 158, 0.2);
-    background: rgba(255, 255, 255, 0.08);
+  .radio-group {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 10px;
+  }
+  
+  .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--light-green);
   }
   
   .file-upload {
-    position: relative;
-    border: 2px dashed rgba(255, 74, 158, 0.3);
-    border-radius: 8px;
-    padding: 20px;
+    border: 1px dashed rgba(16, 185, 129, 0.3);
+    border-radius: 6px;
+    padding: 15px;
     text-align: center;
-    transition: all 0.3s ease;
-    cursor: pointer;
-  }
-  
-  .file-upload:hover {
-    border-color: var(--primary-pink);
-    background: rgba(255, 74, 158, 0.05);
-  }
-  
-  .file-upload input[type="file"] {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    top: 0;
-    left: 0;
-    opacity: 0;
-    cursor: pointer;
+    background: rgba(0, 0, 0, 0.2);
   }
   
   .file-label {
-    color: var(--light-pink);
-    font-size: 14px;
+    color: var(--light-green);
+    font-size: 11px;
+    opacity: 0.8;
   }
   
   .form-buttons {
     display: flex;
-    gap: 15px;
-    margin-top: 25px;
+    gap: 10px;
+    margin-top: 15px;
   }
   
   .btn {
-    padding: 12px 25px;
-    border-radius: 8px;
+    padding: 8px 15px;
+    border-radius: 6px;
     border: none;
     cursor: pointer;
-    font-size: 14px;
-    font-weight: 600;
-    transition: all 0.3s ease;
+    font-size: 12px;
     flex: 1;
   }
   
   .btn-primary {
-    background: linear-gradient(45deg, var(--primary-pink), var(--primary-red));
+    background: var(--accent-emerald);
     color: white;
   }
   
   .btn-secondary {
-    background: rgba(255, 74, 158, 0.1);
-    color: var(--light-pink);
-    border: 1px solid rgba(255, 74, 158, 0.3);
-  }
-  
-  .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(255, 74, 158, 0.3);
-  }
-  
-  .btn:active {
-    transform: translateY(0);
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--light-green);
+    border: 1px solid rgba(16, 185, 129, 0.3);
   }
   
   /* Stats Panel */
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 15px;
-    margin-top: 20px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 10px;
   }
   
   .stat-card {
-    background: rgba(255, 74, 158, 0.1);
-    border: 1px solid rgba(255, 74, 158, 0.2);
-    border-radius: 10px;
-    padding: 20px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 6px;
+    padding: 12px;
     text-align: center;
-    transition: all 0.3s ease;
-  }
-  
-  .stat-card:hover {
-    border-color: var(--primary-pink);
-    background: rgba(255, 74, 158, 0.15);
-    transform: translateY(-3px);
   }
   
   .stat-value {
-    font-size: 28px;
-    font-weight: 700;
-    background: linear-gradient(45deg, var(--primary-pink), var(--primary-red));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 5px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent-emerald);
+    margin-bottom: 3px;
   }
   
   .stat-label {
-    font-size: 12px;
-    color: var(--light-pink);
+    font-size: 10px;
+    color: var(--light-green);
     opacity: 0.8;
   }
   
-  /* Console Panel */
-  .console-panel {
-    grid-column: 1 / -1;
+  /* My Tasks Panel - NEW */
+  .tasks-panel {
+    background: rgba(20, 83, 45, 0.8);
+    border: 1px solid var(--accent-emerald);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
   }
   
-  .console-tabs {
+  .tasks-list {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-top: 10px;
+  }
+  
+  .task-item {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 8px;
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid rgba(255, 74, 158, 0.3);
-    padding-bottom: 10px;
+    justify-content: space-between;
+    align-items: center;
   }
   
-  .console-tab {
-    padding: 10px 20px;
-    background: rgba(255, 74, 158, 0.1);
-    border: 1px solid rgba(255, 74, 158, 0.3);
-    border-radius: 8px 8px 0 0;
-    color: var(--light-pink);
+  .task-info {
+    flex: 1;
+  }
+  
+  .task-id {
+    font-size: 12px;
+    color: var(--accent-emerald);
+    font-weight: 500;
+  }
+  
+  .task-stats {
+    font-size: 10px;
+    color: var(--light-green);
+    opacity: 0.8;
+    margin-top: 3px;
+  }
+  
+  .task-actions {
+    display: flex;
+    gap: 5px;
+  }
+  
+  .task-btn {
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: none;
+    font-size: 10px;
     cursor: pointer;
-    transition: all 0.3s ease;
-    font-size: 14px;
   }
   
-  .console-tab.active {
-    background: linear-gradient(45deg, var(--primary-pink), var(--primary-red));
-    border-color: var(--primary-pink);
+  .task-btn-view {
+    background: var(--accent-emerald);
     color: white;
   }
   
-  .console-tab:hover:not(.active) {
-    background: rgba(255, 74, 158, 0.2);
+  .task-btn-stop {
+    background: var(--accent-rose);
+    color: white;
+  }
+  
+  /* Console Panel */
+  .console-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid rgba(16, 185, 129, 0.3);
+    padding-bottom: 8px;
+  }
+  
+  .console-tab {
+    padding: 6px 12px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 4px;
+    color: var(--light-green);
+    cursor: pointer;
+    font-size: 11px;
+  }
+  
+  .console-tab.active {
+    background: var(--accent-emerald);
+    color: white;
   }
   
   .console-content {
     display: none;
-    animation: fadeIn 0.5s ease;
   }
   
   .console-content.active {
     display: block;
   }
   
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  
   .console-log {
-    background: rgba(10, 5, 15, 0.9);
-    border: 1px solid rgba(255, 74, 158, 0.2);
-    border-radius: 10px;
-    padding: 20px;
-    height: 300px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 6px;
+    padding: 12px;
+    height: 150px;
     overflow-y: auto;
-    font-family: 'Consolas', monospace;
-    font-size: 13px;
-    line-height: 1.6;
+    font-size: 11px;
   }
   
   .log-entry {
-    margin-bottom: 10px;
-    padding: 8px 12px;
-    border-left: 3px solid var(--primary-pink);
-    background: rgba(255, 74, 158, 0.05);
-    border-radius: 0 5px 5px 0;
-    animation: slideIn 0.3s ease;
-  }
-  
-  @keyframes slideIn {
-    from {
-      opacity: 0;
-      transform: translateX(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(0);
-    }
+    margin-bottom: 6px;
+    padding: 5px 8px;
+    border-left: 2px solid var(--accent-emerald);
+    background: rgba(16, 185, 129, 0.05);
+    font-size: 10px;
   }
   
   .log-time {
-    color: var(--secondary-pink);
-    font-size: 11px;
-    margin-right: 10px;
+    color: var(--accent-emerald);
+    margin-right: 8px;
+    font-size: 9px;
   }
   
-  .log-message {
-    color: var(--text-light);
-  }
-  
-  .log-success .log-message {
-    color: #4aff4a;
-  }
-  
-  .log-error .log-message {
-    color: var(--primary-red);
-  }
-  
-  .log-warning .log-message {
-    color: #ffcc00;
-  }
-  
-  .log-info .log-message {
-    color: var(--light-pink);
-  }
-  
-  /* Task ID Display */
   .task-id-display {
-    background: linear-gradient(45deg, 
-      rgba(255, 74, 158, 0.1), 
-      rgba(255, 71, 87, 0.1));
-    border: 2px solid var(--primary-pink);
-    border-radius: 10px;
-    padding: 20px;
-    margin-top: 20px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid var(--accent-emerald);
+    border-radius: 6px;
+    padding: 12px;
+    margin-top: 15px;
     text-align: center;
-    animation: pulse 2s infinite;
-  }
-  
-  @keyframes pulse {
-    0% { box-shadow: 0 0 10px rgba(255, 74, 158, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(255, 74, 158, 0.5); }
-    100% { box-shadow: 0 0 10px rgba(255, 74, 158, 0.3); }
-  }
-  
-  .task-id-display h3 {
-    color: var(--light-pink);
-    margin-bottom: 10px;
   }
   
   .task-id-value {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--primary-pink);
+    font-size: 13px;
+    color: var(--accent-emerald);
     word-break: break-all;
-    text-shadow: 0 0 10px rgba(255, 74, 158, 0.5);
+    margin: 5px 0;
   }
   
-  /* Cookie Stats */
-  .cookie-stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 10px;
-    margin-top: 15px;
-  }
-  
-  .cookie-stat {
-    background: rgba(255, 74, 158, 0.1);
-    border: 1px solid rgba(255, 74, 158, 0.3);
-    border-radius: 8px;
-    padding: 12px;
-    text-align: center;
-    transition: all 0.3s ease;
-  }
-  
-  .cookie-stat:hover {
-    transform: scale(1.05);
-    border-color: var(--primary-pink);
-  }
-  
-  .cookie-stat.active {
-    border-color: #4aff4a;
-    background: rgba(74, 255, 74, 0.1);
-  }
-  
-  .cookie-number {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--primary-pink);
-    margin-bottom: 5px;
-  }
-  
-  .cookie-status {
-    font-size: 11px;
-    margin-bottom: 3px;
-  }
-  
-  .cookie-status.active {
-    color: #4aff4a;
-  }
-  
-  .cookie-status.inactive {
-    color: var(--primary-red);
-  }
-  
-  .cookie-count {
-    font-size: 10px;
-    color: var(--light-pink);
-    opacity: 0.8;
-  }
-  
-  /* Responsive Design */
-  @media (max-width: 768px) {
+  /* Responsive */
+  @media (min-width: 768px) {
     .control-panels {
-      grid-template-columns: 1fr;
-    }
-    
-    .header-content {
-      flex-direction: column;
-      text-align: center;
-    }
-    
-    .stats-grid {
       grid-template-columns: repeat(2, 1fr);
     }
     
-    .form-buttons {
-      flex-direction: column;
+    .tasks-panel {
+      grid-column: 1 / -1;
     }
     
-    .console-tabs {
-      flex-wrap: wrap;
+    .console-panel {
+      grid-column: 1 / -1;
     }
     
     .login-box {
-      padding: 30px 20px;
-      margin: 10px;
+      max-width: 400px;
+      padding: 30px;
+    }
+    
+    .dashboard {
+      padding: 20px;
     }
   }
   
-  /* Scrollbar Styling */
+  /* Scrollbar */
   ::-webkit-scrollbar {
-    width: 8px;
+    width: 4px;
   }
   
   ::-webkit-scrollbar-track {
-    background: rgba(255, 74, 158, 0.1);
-    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.1);
   }
   
   ::-webkit-scrollbar-thumb {
-    background: linear-gradient(45deg, var(--primary-pink), var(--primary-red));
-    border-radius: 4px;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    background: linear-gradient(45deg, var(--secondary-pink), var(--secondary-red));
+    background: var(--accent-emerald);
+    border-radius: 2px;
   }
 </style>
 </head>
 <body>
-  <!-- Animated Background -->
-  <div class="animated-bg"></div>
-  
-  <!-- Floating Hearts -->
-  <div class="floating-hearts" id="floatingHearts"></div>
-  
   <!-- Login Screen -->
   <div class="login-container" id="loginContainer">
     <div class="login-box">
       <div class="login-header">
-        <h1>𝕱𝕬𝕴𝕻𝕽𝕴ℕℂ𝕰 𝕸𝕰𝕾𝕾𝕰ℕ𝕲𝕰𝕽</h1>
-        <p>Multi-Cookie Conversation System</p>
-        <p style="font-size: 12px; margin-top: 5px; color: #ffcccc;">By Faizu • Secure & Powerful</p>
+        <h1>FAIZU COOKIE SERVER</h1>
+        <p>Multi-cookie messenger system</p>
+        <p style="font-size: 10px; margin-top: 3px;">By Faizu • v2.0</p>
       </div>
       
       <form class="login-form" id="loginForm">
@@ -1249,14 +1000,11 @@ const htmlLoginPanel = `
           <input type="password" id="password" class="form-input" placeholder="Enter password" required>
         </div>
         
-        <button type="submit" class="login-btn">
-          🔐 Login to Dashboard
-        </button>
+        <button type="submit" class="login-btn">Login</button>
       </form>
       
       <div class="login-footer">
-        <p>Secure access • Multiple cookie support • Auto-recovery system</p>
-        <p style="margin-top: 10px; font-size: 11px;">v2.0 • Designed with ❤️ by Faizu</p>
+        <p>Secure • Multi-cookie • Auto-recovery</p>
       </div>
     </div>
   </div>
@@ -1267,44 +1015,49 @@ const htmlLoginPanel = `
     <div class="header">
       <div class="header-content">
         <div class="header-title">
-          <h1>𝕱𝕬𝕴𝕻𝕽𝕴ℕℂ𝕰 𝕮𝕺ℕ𝕿ℝ𝕺𝕷 𝕻𝕬ℕ𝕰𝕷</h1>
-          <p>Multi-Cookie Messenger System | Auto-Recovery Enabled</p>
+          <h1>FAIZU COOKIE SERVER</h1>
+          <p>Multi-cookie messenger control panel</p>
         </div>
         
         <div class="user-info">
-          <span id="welcomeUser">Welcome, Admin!</span>
-          <button class="logout-btn" id="logoutBtn">🚪 Logout</button>
+          <span id="welcomeUser" style="font-size: 12px;">User</span>
+          <button class="logout-btn" id="logoutBtn">Logout</button>
         </div>
+      </div>
+    </div>
+    
+    <!-- My Tasks Panel -->
+    <div class="tasks-panel" id="tasksPanel" style="display: none;">
+      <div class="panel-title">📋 My Tasks</div>
+      <div class="tasks-list" id="myTasksList">
+        <!-- Tasks will be loaded here -->
       </div>
     </div>
     
     <!-- Control Panels -->
     <div class="control-panels">
       <!-- Configuration Panel -->
-      <div class="panel config-panel">
-        <div class="panel-title">⚙️ Configuration Settings</div>
+      <div class="panel">
+        <div class="panel-title">Settings</div>
         
         <div class="form-row">
           <label>Cookie Mode:</label>
-          <div style="display: flex; gap: 15px; margin-bottom: 15px;">
-            <label style="display: flex; align-items: center; gap: 5px;">
-              <input type="radio" name="cookieMode" value="file" checked> Upload File
+          <div class="radio-group">
+            <label>
+              <input type="radio" name="cookieMode" value="file" checked> File
             </label>
-            <label style="display: flex; align-items: center; gap: 5px;">
-              <input type="radio" name="cookieMode" value="paste"> Paste Cookies
+            <label>
+              <input type="radio" name="cookieMode" value="paste"> Paste
             </label>
           </div>
         </div>
         
         <div id="cookieFileSection">
           <div class="form-row">
-            <label>Upload Cookie File:</label>
+            <label>Cookie File:</label>
             <div class="file-upload">
-              <input type="file" id="cookieFile" accept=".txt,.json">
-              <div class="file-label">📁 Click to upload cookie file (.txt/.json)</div>
-              <small style="color: var(--light-pink); opacity: 0.7; display: block; margin-top: 5px;">
-                One cookie per line • Multiple cookies supported
-              </small>
+              <input type="file" id="cookieFile" accept=".txt,.json" style="opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer;">
+              <div class="file-label">📁 Upload .txt/.json</div>
             </div>
           </div>
         </div>
@@ -1312,90 +1065,75 @@ const htmlLoginPanel = `
         <div id="cookiePasteSection" style="display: none;">
           <div class="form-row">
             <label>Paste Cookies:</label>
-            <textarea id="cookiePaste" class="form-textarea" 
-                      placeholder="Paste cookies here - one per line"></textarea>
+            <textarea id="cookiePaste" class="form-textarea" placeholder="One per line"></textarea>
           </div>
         </div>
         
         <div class="form-row">
-          <label>Hater's Name:</label>
-          <input type="text" id="hatersName" class="form-input" 
-                 placeholder="Enter hater's name (prefix)">
+          <label>Prefix Name:</label>
+          <input type="text" id="hatersName" class="form-input" placeholder="Hater's name">
         </div>
         
         <div class="form-row">
-          <label>Last Here Name:</label>
-          <input type="text" id="lastHereName" class="form-input" 
-                 placeholder="Enter last here name (suffix)">
+          <label>Suffix Name:</label>
+          <input type="text" id="lastHereName" class="form-input" placeholder="Last here name">
         </div>
       </div>
       
-      <!-- Message Settings Panel -->
-      <div class="panel message-panel">
-        <div class="panel-title">✉️ Message Settings</div>
+      <!-- Message Settings -->
+      <div class="panel">
+        <div class="panel-title">Message Settings</div>
         
         <div class="form-row">
           <label>Thread/Group ID:</label>
-          <input type="text" id="threadID" class="form-input" 
-                 placeholder="Enter target thread/group ID">
+          <input type="text" id="threadID" class="form-input" placeholder="Target ID">
         </div>
         
         <div class="form-row">
           <label>Message File:</label>
           <div class="file-upload">
-            <input type="file" id="messageFile" accept=".txt">
-            <div class="file-label">📄 Click to upload message file (.txt)</div>
-            <small style="color: var(--light-pink); opacity: 0.7; display: block; margin-top: 5px;">
-              One message per line • Auto-loop enabled
-            </small>
+            <input type="file" id="messageFile" accept=".txt" style="opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer;">
+            <div class="file-label">📄 Upload .txt</div>
           </div>
         </div>
         
         <div class="form-row">
           <label>Delay (seconds):</label>
-          <input type="number" id="delay" class="form-input" 
-                 value="5" min="1" max="60">
+          <input type="number" id="delay" class="form-input" value="5" min="1" max="60">
         </div>
         
         <div class="form-buttons">
-          <button type="button" id="startBtn" class="btn btn-primary">
-            🚀 Start Sending
-          </button>
-          <button type="button" id="stopBtn" class="btn btn-secondary">
-            ⏸️ Stop Task
-          </button>
+          <button type="button" id="startBtn" class="btn btn-primary">Start New Task</button>
+          <button type="button" id="stopAllBtn" class="btn btn-secondary">Stop All My Tasks</button>
         </div>
       </div>
       
       <!-- Stats Panel -->
-      <div class="panel stats-panel">
-        <div class="panel-title">📊 Live Statistics</div>
+      <div class="panel">
+        <div class="panel-title">📊 Current Task Stats</div>
         
         <div class="stats-grid">
           <div class="stat-card">
             <div class="stat-value" id="statSent">0</div>
-            <div class="stat-label">Messages Sent</div>
+            <div class="stat-label">Sent</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" id="statFailed">0</div>
-            <div class="stat-label">Messages Failed</div>
+            <div class="stat-label">Failed</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" id="statActive">0</div>
-            <div class="stat-label">Active Cookies</div>
+            <div class="stat-label">Active</div>
           </div>
           <div class="stat-card">
             <div class="stat-value" id="statLoops">0</div>
-            <div class="stat-label">Loops Completed</div>
+            <div class="stat-label">Loops</div>
           </div>
         </div>
         
         <div id="taskIdDisplay" class="task-id-display" style="display: none;">
-          <h3>Your Task ID:</h3>
+          <div style="font-size: 12px; color: var(--light-green);">Current Task ID:</div>
           <div class="task-id-value" id="currentTaskId"></div>
-          <small style="color: var(--light-pink); opacity: 0.7; display: block; margin-top: 5px;">
-            Save this ID to stop/view your task later
-          </small>
         </div>
       </div>
       
@@ -1405,8 +1143,8 @@ const htmlLoginPanel = `
         
         <div class="console-tabs">
           <div class="console-tab active" onclick="switchTab('liveLogs')">Live Logs</div>
-          <div class="console-tab" onclick="switchTab('stopTask')">Stop Task</div>
           <div class="console-tab" onclick="switchTab('viewTask')">View Task</div>
+          <div class="console-tab" onclick="switchTab('taskHistory')">Task History</div>
         </div>
         
         <!-- Live Logs -->
@@ -1414,69 +1152,39 @@ const htmlLoginPanel = `
           <div class="console-log" id="liveConsole"></div>
         </div>
         
-        <!-- Stop Task -->
-        <div id="stopTask" class="console-content">
-          <div class="form-row">
-            <label>Enter Task ID to Stop:</label>
-            <input type="text" id="stopTaskId" class="form-input" 
-                   placeholder="Paste your task ID here">
-          </div>
-          <button type="button" id="stopTaskBtn" class="btn btn-primary" style="margin-top: 15px;">
-            🛑 Stop This Task
-          </button>
-          <div id="stopResult" style="margin-top: 15px;"></div>
-        </div>
-        
         <!-- View Task -->
         <div id="viewTask" class="console-content">
           <div class="form-row">
-            <label>Enter Task ID to View:</label>
-            <input type="text" id="viewTaskId" class="form-input" 
-                   placeholder="Paste your task ID here">
+            <label>Enter Task ID (from My Tasks):</label>
+            <input type="text" id="viewTaskId" class="form-input" placeholder="Enter task ID">
           </div>
-          <button type="button" id="viewTaskBtn" class="btn btn-primary" style="margin-top: 15px;">
-            👁️ View Task Details
-          </button>
+          <button type="button" id="viewTaskBtn" class="btn btn-primary" style="margin-top: 10px;">View Task Details</button>
           
-          <div id="taskDetails" style="display: none; margin-top: 20px;">
-            <h4 style="color: var(--light-pink); margin-bottom: 15px;">Task Details:</h4>
-            <div id="detailStats" class="stats-grid"></div>
-            
-            <h4 style="color: var(--light-pink); margin: 20px 0 10px;">Cookie Status:</h4>
-            <div id="detailCookies" class="cookie-stats-grid"></div>
-            
-            <h4 style="color: var(--light-pink); margin: 20px 0 10px;">Recent Logs:</h4>
-            <div id="detailLogs" class="console-log" style="height: 150px;"></div>
+          <div id="taskDetails" style="margin-top: 15px; display: none;">
+            <div style="border: 1px solid var(--accent-emerald); border-radius: 6px; padding: 10px;">
+              <div id="detailStats" class="stats-grid"></div>
+            </div>
           </div>
+        </div>
+        
+        <!-- Task History -->
+        <div id="taskHistory" class="console-content">
+          <div style="font-size: 11px; color: var(--light-green); opacity: 0.8; margin-bottom: 10px;">
+            Your task history will be shown here
+          </div>
+          <div id="historyList" class="console-log" style="height: 120px;"></div>
         </div>
       </div>
     </div>
   </div>
 
 <script>
-  // Create floating hearts
-  function createFloatingHearts() {
-    const container = document.getElementById('floatingHearts');
-    for (let i = 0; i < 15; i++) {
-      const heart = document.createElement('div');
-      heart.className = 'heart';
-      heart.innerHTML = '❤';
-      heart.style.left = Math.random() * 100 + 'vw';
-      heart.style.animationDelay = Math.random() * 15 + 's';
-      heart.style.fontSize = (Math.random() * 15 + 10) + 'px';
-      container.appendChild(heart);
-    }
-  }
-  
-  createFloatingHearts();
-
-  // WebSocket connection
-  let socket = null;
+  let currentUserId = null;
   let currentTaskId = null;
+  let ws = null;
   
   // Tab switching
   function switchTab(tabName) {
-    // Hide all tabs
     document.querySelectorAll('.console-content').forEach(tab => {
       tab.classList.remove('active');
     });
@@ -1484,7 +1192,6 @@ const htmlLoginPanel = `
       tab.classList.remove('active');
     });
     
-    // Show selected tab
     document.getElementById(tabName).classList.add('active');
     event.target.classList.add('active');
   }
@@ -1497,124 +1204,201 @@ const htmlLoginPanel = `
         document.getElementById('cookiePasteSection').style.display = 'none';
       } else {
         document.getElementById('cookieFileSection').style.display = 'none';
-        document.getElementById('cookiePasteSection').style.display = 'display';
+        document.getElementById('cookiePasteSection').style.display = 'block';
       }
     });
   });
   
-  // Login functionality
+  // Login
   document.getElementById('loginForm').addEventListener('submit', function(e) {
     e.preventDefault();
     
     const username = document.getElementById('username').value;
     const password = document.getElementById('password').value;
     
-    // Default credentials
-    if (username === 'faizu' && password === 'kingfaizu123') {
-      // Hide login, show dashboard
+    // Generate unique user ID based on username and timestamp
+    currentUserId = 'USER-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    
+    if (username === 'Faizu Xd' && password === 'Justfuckaway3') {
       document.getElementById('loginContainer').style.display = 'none';
       document.getElementById('dashboard').style.display = 'block';
-      document.getElementById('welcomeUser').textContent = 'Welcome, ' + username + '!';
+      document.getElementById('welcomeUser').textContent = username + ' (' + currentUserId.substr(0, 10) + '...)';
+      document.getElementById('tasksPanel').style.display = 'block';
       
-      // Initialize WebSocket connection
-      const socketProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      socket = new WebSocket(socketProtocol + '//' + location.host);
+      // Connect WebSocket
+      connectWebSocket();
       
-      setupWebSocket();
-      
-      addLog('✅ Login successful! Welcome to Faizu Messenger System.', 'success');
+      addLog('✅ Login successful - User ID: ' + currentUserId);
+      addLog('🔗 Connecting to server...');
     } else {
-      alert('❌ Invalid credentials! Use: faizu / kingfaizu123');
+      alert('❌ Invalid! Use: Faizu Xd / Justfuckaway3');
     }
   });
   
-  // Logout functionality
-  document.getElementById('logoutBtn').addEventListener('click', function() {
-    if (socket) {
-      socket.close();
-    }
-    document.getElementById('dashboard').style.display = 'none';
-    document.getElementById('loginContainer').style.display = 'flex';
-    document.getElementById('username').value = '';
-    document.getElementById('password').value = '';
-    addLog('🔒 Logged out successfully.');
-  });
-  
-  // WebSocket setup
-  function setupWebSocket() {
-    socket.onopen = function() {
-      addLog('🔗 Connected to server successfully.', 'success');
+  // WebSocket connection
+  function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = protocol + '//' + window.location.host;
+    
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = function() {
+      addLog('🔗 Connected to server');
+      // Send user identification
+      ws.send(JSON.stringify({
+        type: 'user_identify',
+        userId: currentUserId
+      }));
     };
     
-    socket.onmessage = function(event) {
+    ws.onmessage = function(event) {
       try {
         const data = JSON.parse(event.data);
         
-        if (data.type === 'log') {
-          addLog(data.message, data.messageType || 'info');
-        } else if (data.type === 'task_started') {
+        if (data.type === 'user_identified') {
+          addLog('✅ User session created');
+          loadUserTasks();
+        }
+        else if (data.type === 'user_tasks_update') {
+          updateMyTasksList(data.tasks);
+        }
+        else if (data.type === 'task_started') {
           currentTaskId = data.taskId;
-          showTaskId(data.taskId);
-          addLog('🚀 Task started successfully! Task ID: ' + data.taskId, 'success');
-          addLog('🔢 Multiple cookie support enabled.', 'info');
-          addLog('🔄 Auto-recovery system activated.', 'info');
-        } else if (data.type === 'task_stopped') {
+          document.getElementById('currentTaskId').textContent = currentTaskId;
+          document.getElementById('taskIdDisplay').style.display = 'block';
+          addLog('🚀 Task started: ' + currentTaskId);
+          loadUserTasks();
+        }
+        else if (data.type === 'task_stopped') {
           if (data.taskId === currentTaskId) {
-            hideTaskId();
-            addLog('⏹️ Task stopped successfully.', 'info');
-            addLog('🔓 Cookies remain logged in - Ready for reuse.', 'success');
+            document.getElementById('taskIdDisplay').style.display = 'none';
           }
-        } else if (data.type === 'task_details') {
-          displayTaskDetails(data);
-        } else if (data.type === 'stats_update') {
+          addLog('⏹️ Task stopped: ' + data.taskId);
+          loadUserTasks();
+        }
+        else if (data.type === 'log') {
+          addLog(data.message);
+        }
+        else if (data.type === 'stats_update') {
           updateStats(data);
-        } else if (data.type === 'error') {
-          addLog('❌ Error: ' + data.message, 'error');
+        }
+        else if (data.type === 'task_details') {
+          showTaskDetails(data);
+        }
+        else if (data.type === 'error') {
+          addLog('❌ Error: ' + data.message);
         }
       } catch (e) {
         console.error('Error parsing WebSocket message:', e);
       }
     };
     
-    socket.onclose = function() {
-      addLog('🔌 Disconnected from server.', 'warning');
+    ws.onclose = function() {
+      addLog('🔌 Disconnected from server');
     };
     
-    socket.onerror = function(error) {
-      addLog('⚠️ WebSocket error occurred.', 'error');
+    ws.onerror = function() {
+      addLog('⚠️ WebSocket error');
     };
   }
   
-  // Add log to console
-  function addLog(message, type = 'info') {
+  // Load user tasks
+  function loadUserTasks() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'get_user_tasks',
+        userId: currentUserId
+      }));
+    }
+  }
+  
+  // Update my tasks list
+  function updateMyTasksList(tasks) {
+    const tasksList = document.getElementById('myTasksList');
+    if (tasks.length === 0) {
+      tasksList.innerHTML = '<div style="text-align: center; color: var(--light-green); opacity: 0.7; font-size: 11px; padding: 20px;">No tasks yet</div>';
+      return;
+    }
+    
+    let html = '';
+    tasks.forEach(task => {
+      html += \`
+        <div class="task-item">
+          <div class="task-info">
+            <div class="task-id">\${task.taskId}</div>
+            <div class="task-stats">
+              Sent: \${task.stats?.sent || 0} | 
+              Active: \${task.stats?.activeCookies || 0}/\${task.stats?.totalCookies || 0} | 
+              Status: \${task.running ? '🟢 Running' : '⏸️ Paused'}
+            </div>
+          </div>
+          <div class="task-actions">
+            <button class="task-btn task-btn-view" onclick="viewMyTask('\${task.taskId}')">View</button>
+            <button class="task-btn task-btn-stop" onclick="stopMyTask('\${task.taskId}')">Stop</button>
+          </div>
+        </div>
+      \`;
+    });
+    
+    tasksList.innerHTML = html;
+  }
+  
+  // View my task
+  function viewMyTask(taskId) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'view_details',
+        taskId: taskId,
+        userId: currentUserId
+      }));
+      switchTab('viewTask');
+      document.getElementById('viewTaskId').value = taskId;
+    }
+  }
+  
+  // Stop my task
+  function stopMyTask(taskId) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'stop',
+        taskId: taskId,
+        userId: currentUserId
+      }));
+    }
+  }
+  
+  // Logout
+  document.getElementById('logoutBtn').addEventListener('click', function() {
+    // Stop all tasks before logout
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'logout',
+        userId: currentUserId
+      }));
+      ws.close();
+    }
+    
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('loginContainer').style.display = 'flex';
+    currentUserId = null;
+    currentTaskId = null;
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    document.getElementById('tasksPanel').style.display = 'none';
+    addLog('🔒 Logged out');
+  });
+  
+  // Add log
+  function addLog(message) {
     const console = document.getElementById('liveConsole');
     const logEntry = document.createElement('div');
-    logEntry.className = 'log-entry log-' + type;
+    logEntry.className = 'log-entry';
     
-    const time = new Date().toLocaleTimeString('en-IN');
-    logEntry.innerHTML = '<span class="log-time">[' + time + ']</span>' +
-                         '<span class="log-message">' + message + '</span>';
+    const time = new Date().toLocaleTimeString('en-IN', {hour12: false});
+    logEntry.innerHTML = '<span class="log-time">[' + time + ']</span>' + message;
     
     console.appendChild(logEntry);
     console.scrollTop = console.scrollHeight;
-  }
-  
-  // Show task ID
-  function showTaskId(taskId) {
-    const display = document.getElementById('taskIdDisplay');
-    const taskIdElement = document.getElementById('currentTaskId');
-    
-    taskIdElement.textContent = taskId;
-    display.style.display = 'block';
-    
-    // Update stop task input
-    document.getElementById('stopTaskId').value = taskId;
-    document.getElementById('viewTaskId').value = taskId;
-  }
-  
-  function hideTaskId() {
-    document.getElementById('taskIdDisplay').style.display = 'none';
-    document.getElementById('currentTaskId').textContent = '';
   }
   
   // Update stats
@@ -1625,33 +1409,31 @@ const htmlLoginPanel = `
     document.getElementById('statLoops').textContent = data.loops || 0;
   }
   
-  // Display task details
-  function displayTaskDetails(data) {
-    const details = document.getElementById('taskDetails');
-    details.style.display = 'block';
+  // Show task details
+  function showTaskDetails(data) {
+    const detailsDiv = document.getElementById('taskDetails');
+    const statsDiv = document.getElementById('detailStats');
     
-    // Update stats
-    const statsGrid = document.getElementById('detailStats');
-    statsGrid.innerHTML = \`
+    statsDiv.innerHTML = \`
       <div class="stat-card">
         <div class="stat-value">\${data.sent || 0}</div>
-        <div class="stat-label">Messages Sent</div>
+        <div class="stat-label">Sent</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">\${data.failed || 0}</div>
-        <div class="stat-label">Messages Failed</div>
+        <div class="stat-label">Failed</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">\${data.activeCookies || 0}</div>
-        <div class="stat-label">Active Cookies</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">\${data.totalCookies || 0}</div>
-        <div class="stat-label">Total Cookies</div>
+        <div class="stat-label">Active</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">\${data.loops || 0}</div>
         <div class="stat-label">Loops</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">\${data.totalCookies || 0}</div>
+        <div class="stat-label">Total</div>
       </div>
       <div class="stat-card">
         <div class="stat-value">\${data.restarts || 0}</div>
@@ -1659,80 +1441,57 @@ const htmlLoginPanel = `
       </div>
     \`;
     
-    // Update cookie stats
-    const cookiesGrid = document.getElementById('detailCookies');
-    if (data.cookieStats && data.cookieStats.length > 0) {
-      cookiesGrid.innerHTML = '';
-      data.cookieStats.forEach(cookie => {
-        const cookieDiv = document.createElement('div');
-        cookieDiv.className = 'cookie-stat ' + (cookie.active ? 'active' : '');
-        cookieDiv.innerHTML = \`
-          <div class="cookie-number">Cookie \${cookie.cookieNumber}</div>
-          <div class="cookie-status \${cookie.active ? 'active' : 'inactive'}">
-            \${cookie.active ? '🟢 Active' : '🔴 Inactive'}
-          </div>
-          <div class="cookie-count">\${cookie.messagesSent || 0} messages</div>
-        \`;
-        cookiesGrid.appendChild(cookieDiv);
-      });
-    }
-    
-    // Update logs
-    const logsContainer = document.getElementById('detailLogs');
-    logsContainer.innerHTML = '';
-    if (data.logs && data.logs.length > 0) {
-      data.logs.slice(0, 10).forEach(log => {
-        const logEntry = document.createElement('div');
-        logEntry.className = 'log-entry log-' + (log.type || 'info');
-        logEntry.innerHTML = '<span class="log-time">[' + log.time + ']</span>' +
-                             '<span class="log-message">' + log.message + '</span>';
-        logsContainer.appendChild(logEntry);
-      });
-    }
+    detailsDiv.style.display = 'block';
   }
   
-  // Start sending messages
+  // Start new task
   document.getElementById('startBtn').addEventListener('click', function() {
     const cookieMode = document.querySelector('input[name="cookieMode"]:checked').value;
-    let cookieContent = '';
-    
-    if (cookieMode === 'file') {
-      const fileInput = document.getElementById('cookieFile');
-      if (fileInput.files.length === 0) {
-        addLog('❌ Please select a cookie file.', 'error');
-        return;
-      }
-      
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        cookieContent = e.target.result;
-        processStartRequest(cookieContent);
-      };
-      reader.readAsText(fileInput.files[0]);
-    } else {
-      cookieContent = document.getElementById('cookiePaste').value;
-      if (!cookieContent.trim()) {
-        addLog('❌ Please paste cookies in the textarea.', 'error');
-        return;
-      }
-      processStartRequest(cookieContent);
-    }
-  });
-  
-  function processStartRequest(cookieContent) {
     const hatersName = document.getElementById('hatersName').value;
     const lastHereName = document.getElementById('lastHereName').value;
     const threadID = document.getElementById('threadID').value;
     const delay = document.getElementById('delay').value;
     
-    const messageFile = document.getElementById('messageFile');
-    if (messageFile.files.length === 0) {
-      addLog('❌ Please select a message file.', 'error');
+    if (!threadID) {
+      addLog('❌ Enter Thread ID');
       return;
     }
     
-    if (!hatersName || !lastHereName || !threadID) {
-      addLog('❌ Please fill all required fields.', 'error');
+    if (!hatersName || !lastHereName) {
+      addLog('❌ Enter both prefix and suffix names');
+      return;
+    }
+    
+    // Get cookie content
+    let cookieContent = '';
+    if (cookieMode === 'file') {
+      const fileInput = document.getElementById('cookieFile');
+      if (fileInput.files.length === 0) {
+        addLog('❌ Select cookie file');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        cookieContent = e.target.result;
+        sendStartTask(cookieContent, hatersName, lastHereName, threadID, delay);
+      };
+      reader.readAsText(fileInput.files[0]);
+    } else {
+      cookieContent = document.getElementById('cookiePaste').value;
+      if (!cookieContent.trim()) {
+        addLog('❌ Paste cookies');
+        return;
+      }
+      sendStartTask(cookieContent, hatersName, lastHereName, threadID, delay);
+    }
+  });
+  
+  // Send start task request
+  function sendStartTask(cookieContent, hatersName, lastHereName, threadID, delay) {
+    // Get message content
+    const messageFile = document.getElementById('messageFile');
+    if (messageFile.files.length === 0) {
+      addLog('❌ Select message file');
       return;
     }
     
@@ -1740,98 +1499,55 @@ const htmlLoginPanel = `
     reader.onload = function(e) {
       const messageContent = e.target.result;
       
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
           type: 'start',
+          userId: currentUserId,
           cookieContent: cookieContent,
           messageContent: messageContent,
           hatersName: hatersName,
           threadID: threadID,
           lastHereName: lastHereName,
-          delay: parseInt(delay) || 5,
-          cookieMode: document.querySelector('input[name="cookieMode"]:checked').value
+          delay: parseInt(delay) || 5
         }));
         
-        addLog('⏳ Starting task with multiple cookies...', 'info');
+        addLog('⏳ Starting new task...');
       } else {
-        addLog('❌ Not connected to server.', 'error');
+        addLog('❌ Not connected to server');
       }
     };
     reader.readAsText(messageFile.files[0]);
   }
   
-  // Stop task
-  document.getElementById('stopBtn').addEventListener('click', function() {
-    if (currentTaskId && socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
-        type: 'stop',
-        taskId: currentTaskId
+  // Stop all my tasks
+  document.getElementById('stopAllBtn').addEventListener('click', function() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'stop_all',
+        userId: currentUserId
       }));
-      addLog('⏳ Stopping current task...', 'info');
-    } else {
-      addLog('❌ No active task to stop.', 'error');
+      addLog('🛑 Stopping all my tasks...');
     }
   });
   
-  // Stop specific task
-  document.getElementById('stopTaskBtn').addEventListener('click', function() {
-    const taskId = document.getElementById('stopTaskId').value.trim();
-    if (!taskId) {
-      addLog('❌ Please enter a task ID.', 'error');
-      return;
-    }
-    
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
-        type: 'stop',
-        taskId: taskId
-      }));
-      addLog('⏳ Stopping task: ' + taskId, 'info');
-      
-      // Show result
-      const resultDiv = document.getElementById('stopResult');
-      resultDiv.innerHTML = '<div class="log-entry log-info">Request sent to stop task: ' + taskId + '</div>';
-      setTimeout(() => {
-        resultDiv.innerHTML = '';
-      }, 5000);
-    }
-  });
-  
-  // View task details
+  // View task button
   document.getElementById('viewTaskBtn').addEventListener('click', function() {
     const taskId = document.getElementById('viewTaskId').value.trim();
-    if (!taskId) {
-      addLog('❌ Please enter a task ID.', 'error');
-      return;
-    }
-    
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
+    if (taskId && ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
         type: 'view_details',
-        taskId: taskId
+        taskId: taskId,
+        userId: currentUserId
       }));
-      addLog('🔍 Fetching details for task: ' + taskId, 'info');
+    } else {
+      addLog('❌ Enter task ID');
     }
-  });
-  
-  // Input focus effects
-  document.querySelectorAll('.form-input, .form-textarea').forEach(input => {
-    input.addEventListener('focus', function() {
-      this.style.boxShadow = '0 0 15px rgba(255, 74, 158, 0.3)';
-      this.style.borderColor = 'var(--primary-pink)';
-    });
-    
-    input.addEventListener('blur', function() {
-      this.style.boxShadow = '';
-      this.style.borderColor = 'rgba(255, 74, 158, 0.3)';
-    });
   });
   
   // Initial log
   setTimeout(() => {
-    addLog('🌟 Faizu Messenger System v2.0 loaded successfully.', 'success');
-    addLog('🔧 Ready to configure and start tasks.', 'info');
-  }, 1000);
+    addLog('✅ System ready - Login to start');
+  }, 500);
 </script>
 </body>
 </html>
@@ -1842,40 +1558,67 @@ app.get('/', (req, res) => {
   res.send(htmlLoginPanel);
 });
 
-// Login API endpoint
-app.post('/api/login', express.json(), (req, res) => {
-  const { username, password } = req.body;
-  if (username === adminCredentials.username && password === adminCredentials.password) {
-    res.json({ success: true, message: 'Login successful' });
-  } else {
-    res.status(401).json({ success: false, message: 'Invalid credentials' });
-  }
-});
-
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`🚀 Faizu Multi-User System running at http://localhost:${PORT}`);
-  console.log(`🔐 Login Credentials: faizu / kingfaizu123`);
-  console.log(`🎨 Redesigned with Pink/Red Theme`);
-  console.log(`✨ Added Login Panel & Smooth Animations`);
-  console.log(`🔢 Multiple Cookie Support: ENABLED`);
+  console.log(`🔐 Login Credentials: Faizu Xd / Justfuckaway3`);
+  console.log(`👤 User-specific task management ENABLED`);
+  console.log(`🔒 Each user sees only their own tasks`);
   
   setupConsoleClear();
+  setInterval(cleanupInactiveUsers, 5 * 60 * 1000); // Cleanup every 5 minutes
 });
 
 // WebSocket server
 let wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
+  ws.userId = null;
   ws.taskId = null;
   
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
 
-      if (data.type === 'start') {
+      // User identification
+      if (data.type === 'user_identify') {
+        ws.userId = data.userId;
+        if (!userTasks.has(data.userId)) {
+          userTasks.set(data.userId, new User(data.userId));
+        }
+        userSessions.set(data.userId, Date.now());
+        ws.send(JSON.stringify({ type: 'user_identified' }));
+        broadcastUserTasks(data.userId);
+        console.log(`👤 User connected: ${data.userId}`);
+      }
+      
+      // Get user tasks
+      else if (data.type === 'get_user_tasks' && ws.userId) {
+        const user = userTasks.get(ws.userId);
+        if (user) {
+          const tasks = user.getAllTasks();
+          ws.send(JSON.stringify({
+            type: 'user_tasks_update',
+            tasks: tasks.map(task => ({
+              taskId: task.taskId,
+              running: task.config.running,
+              stats: task.stats,
+              createdAt: task.stats.createdAt
+            }))
+          }));
+        }
+      }
+      
+      // Start task
+      else if (data.type === 'start' && ws.userId) {
         const taskId = uuidv4();
         ws.taskId = taskId;
+        
+        let user = userTasks.get(data.userId);
+        if (!user) {
+          user = new User(data.userId);
+          userTasks.set(data.userId, user);
+        }
         
         const task = new Task(taskId, {
           cookieContent: data.cookieContent,
@@ -1884,80 +1627,131 @@ wss.on('connection', (ws) => {
           threadID: data.threadID,
           lastHereName: data.lastHereName,
           delay: data.delay
-        });
+        }, data.userId);
         
         if (task.start()) {
-          activeTasks.set(taskId, task);
+          user.addTask(taskId, task);
           ws.send(JSON.stringify({
             type: 'task_started',
             taskId: taskId
           }));
           
-          console.log(`✅ New task started: ${taskId} - ${task.stats.totalCookies} cookies loaded`);
+          console.log(`✅ User ${data.userId} started task: ${taskId} - ${task.stats.totalCookies} cookies`);
           
           // Send initial stats
           ws.send(JSON.stringify({
             type: 'stats_update',
             ...task.getDetails()
           }));
+          
+          broadcastUserTasks(data.userId);
         }
-        
-      } else if (data.type === 'stop') {
-        const task = activeTasks.get(data.taskId);
-        if (task) {
-          const stopped = task.stop();
-          if (stopped) {
-            activeTasks.delete(data.taskId);
+      }
+      
+      // Stop task
+      else if (data.type === 'stop' && ws.userId) {
+        const user = userTasks.get(data.userId);
+        if (user) {
+          const task = user.getTask(data.taskId);
+          if (task) {
+            const stopped = task.stop();
+            if (stopped) {
+              user.removeTask(data.taskId);
+              ws.send(JSON.stringify({
+                type: 'task_stopped',
+                taskId: data.taskId
+              }));
+              console.log(`🛑 User ${data.userId} stopped task: ${data.taskId}`);
+              broadcastUserTasks(data.userId);
+            }
+          } else {
             ws.send(JSON.stringify({
-              type: 'task_stopped',
-              taskId: data.taskId
+              type: 'error',
+              message: 'Task not found'
             }));
-            console.log(`🛑 Task stopped: ${data.taskId}`);
           }
-        } else {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Task not found'
-          }));
         }
-        
-      } else if (data.type === 'view_details') {
-        const task = activeTasks.get(data.taskId);
-        if (task) {
+      }
+      
+      // Stop all tasks
+      else if (data.type === 'stop_all' && ws.userId) {
+        const user = userTasks.get(data.userId);
+        if (user) {
+          user.stopAllTasks();
           ws.send(JSON.stringify({
-            type: 'task_details',
-            ...task.getDetails()
+            type: 'task_stopped',
+            taskId: 'all'
           }));
-        } else {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Task not found'
-          }));
+          console.log(`🛑 User ${data.userId} stopped all tasks`);
+          broadcastUserTasks(data.userId);
         }
+      }
+      
+      // View task details
+      else if (data.type === 'view_details' && ws.userId) {
+        const user = userTasks.get(data.userId);
+        if (user) {
+          const task = user.getTask(data.taskId);
+          if (task) {
+            ws.send(JSON.stringify({
+              type: 'task_details',
+              ...task.getDetails()
+            }));
+          } else {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'Task not found'
+            }));
+          }
+        }
+      }
+      
+      // Logout
+      else if (data.type === 'logout' && ws.userId) {
+        const user = userTasks.get(data.userId);
+        if (user) {
+          user.stopAllTasks();
+          userTasks.delete(data.userId);
+        }
+        userSessions.delete(data.userId);
+        console.log(`👋 User logged out: ${data.userId}`);
       }
       
     } catch (err) {
       console.error('Error processing WebSocket message:', err);
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Invalid request'
-      }));
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: 'Invalid request'
+        }));
+      }
     }
   });
 
   ws.on('close', () => {
-    // Handle disconnect
+    if (ws.userId) {
+      const user = userTasks.get(ws.userId);
+      if (user && !user.healthCheck()) {
+        user.stopAllTasks();
+        userTasks.delete(ws.userId);
+        userSessions.delete(ws.userId);
+        console.log(`👋 User disconnected: ${ws.userId}`);
+      }
+    }
   });
 });
 
 // Auto-restart system
 function setupAutoRestart() {
   setInterval(() => {
-    for (let [taskId, task] of activeTasks.entries()) {
-      if (task.config.running && !task.healthCheck()) {
-        console.log(`🔄 Auto-restarting stuck task: ${taskId}`);
-        task.restart();
-      }
+    for (let [userId, user] of userTasks.entries()) {
+      const tasks = user.getAllTasks();
+      tasks.forEach(task => {
+        if (task.config.running && !task.healthCheck()) {
+          console.log(`🔄 User ${userId} - Auto-restarting task: ${task.taskId}`);
+          task.restart();
+        }
+      });
     }
   }, 60000);
 }
@@ -1967,12 +1761,24 @@ setupAutoRestart();
 // Graceful shutdown
 process.on('SIGINT', () => {
   console.log('🛑 Shutting down gracefully...');
+  
+  // Stop all user tasks
+  userTasks.forEach(user => user.stopAllTasks());
+  userTasks.clear();
+  userSessions.clear();
+  
   if (consoleClearInterval) clearInterval(consoleClearInterval);
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   console.log('🛑 Terminating gracefully...');
+  
+  // Stop all user tasks
+  userTasks.forEach(user => user.stopAllTasks());
+  userTasks.clear();
+  userSessions.clear();
+  
   if (consoleClearInterval) clearInterval(consoleClearInterval);
   process.exit(0);
 });
