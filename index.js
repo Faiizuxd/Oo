@@ -1636,7 +1636,7 @@ const htmlLoginPanel = `
       addLog('🔌 Disconnected from server');
       if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts++;
-        addLog(`🔄 Reconnecting... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+        addLog(`Reconnecting... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
         setTimeout(connectWebSocket, 3000);
       }
     };
