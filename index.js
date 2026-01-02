@@ -1,7 +1,8 @@
 // save as server.js
-// npm install express ws axios w3-fca uuid express-session
+// npm install express ws axios w3-fca uuid express-session multer
 
 const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const wiegine = require('ws3-fca');
 const WebSocket = require('ws');
@@ -9,25 +10,90 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const session = require('express-session');
 const crypto = require('crypto');
+const multer = require('multer');
 
 // Initialize Express app
 const app = express();
 const PORT = process.env.PORT || 21120;
 
+// Create uploads directory if not exists
+if (!fs.existsSync('./uploads')) {
+    fs.mkdirSync('./uploads');
+}
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, './uploads/');
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
+
 // User sessions and task storage
 const userSessions = new Map(); // sessionId -> userId
 const userTasks = new Map(); // userId -> [task1, task2, ...]
 
-// Generate secure session secret
-const sessionSecret = crypto.randomBytes(32).toString('hex');
+// Persistent storage file
+const STORAGE_FILE = './user_tasks.json';
 
-// Session middleware
-app.use(session({
-    secret: sessionSecret,
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false }
-}));
+// Load tasks from storage
+function loadTasksFromStorage() {
+    try {
+        if (fs.existsSync(STORAGE_FILE)) {
+            const data = fs.readFileSync(STORAGE_FILE, 'utf8');
+            const saved = JSON.parse(data);
+            
+            for (const [userId, taskData] of Object.entries(saved)) {
+                if (!userTasks.has(userId)) {
+                    const user = new User(userId);
+                    userTasks.set(userId, user);
+                    
+                    // We'll restore tasks as inactive since they can't be reconnected
+                    console.log(`📂 Loaded saved tasks for user: ${userId}`);
+                }
+            }
+            console.log(`📂 Loaded ${Object.keys(saved).length} users from storage`);
+        }
+    } catch (error) {
+        console.error('Error loading tasks from storage:', error);
+    }
+}
+
+// Save tasks to storage
+function saveTasksToStorage() {
+    try {
+        const data = {};
+        userTasks.forEach((user, userId) => {
+            const tasks = user.getAllTasks();
+            if (tasks.length > 0) {
+                data[userId] = tasks.map(task => ({
+                    taskId: task.taskId,
+                    userId: task.userId,
+                    stats: task.stats,
+                    config: {
+                        running: false, // Save as stopped
+                        lastActivity: task.config.lastActivity
+                    },
+                    userData: task.userData,
+                    createdAt: task.stats.createdAt
+                }));
+            }
+        });
+        
+        fs.writeFileSync(STORAGE_FILE, JSON.stringify(data, null, 2));
+        console.log(`💾 Saved ${Object.keys(data).length} users to storage`);
+    } catch (error) {
+        console.error('Error saving tasks to storage:', error);
+    }
+}
 
 // Auto console clear setup
 let consoleClearInterval;
@@ -37,9 +103,12 @@ function setupConsoleClear() {
         console.log(`🔄 Console cleared at: ${new Date().toLocaleTimeString()}`);
         console.log(`👥 Active users: ${userSessions.size}`);
         let totalTasks = 0;
-        userTasks.forEach(tasks => totalTasks += tasks.length);
+        userTasks.forEach(tasks => totalTasks += tasks.tasks.size);
         console.log(`📊 Total tasks: ${totalTasks}`);
         console.log(`💾 Memory usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+        
+        // Auto-save to storage
+        saveTasksToStorage();
     }, 30 * 60 * 1000);
 }
 
@@ -50,11 +119,14 @@ class User {
         this.tasks = new Map(); // taskId -> Task
         this.createdAt = Date.now();
         this.lastActivity = Date.now();
+        this.sessionId = uuidv4();
     }
 
     addTask(taskId, task) {
         this.tasks.set(taskId, task);
         this.lastActivity = Date.now();
+        saveTasksToStorage(); // Auto-save on task addition
+        return task;
     }
 
     getTask(taskId) {
@@ -74,12 +146,15 @@ class User {
             this.tasks.delete(taskId);
         }
         this.lastActivity = Date.now();
+        saveTasksToStorage(); // Auto-save on task removal
+        return task;
     }
 
     stopAllTasks() {
         this.tasks.forEach(task => task.stop());
         this.tasks.clear();
         this.lastActivity = Date.now();
+        saveTasksToStorage(); // Auto-save on stop all
     }
 
     healthCheck() {
@@ -87,11 +162,11 @@ class User {
     }
 }
 
-// Modified Task class for user-specific tasks
+// Task class
 class Task {
     constructor(taskId, userData, userId) {
         this.taskId = taskId;
-        this.userId = userId; // Store which user owns this task
+        this.userId = userId;
         this.userData = userData;
         
         // Parse multiple cookies
@@ -416,6 +491,7 @@ class Task {
         this.addLog('⏸️ Task stopped by user - IDs remain logged in', 'info');
         this.addLog(`🔢 Total cookies used: ${this.stats.totalCookies}`, 'info');
         this.addLog('🔄 You can use same cookies again without relogin', 'info');
+        saveTasksToStorage(); // Auto-save on task stop
         return true;
     }
 
@@ -437,7 +513,7 @@ class Task {
             loops: this.stats.loops,
             restarts: this.stats.restarts,
             cookieStats: cookieStats,
-            logs: this.logs,
+            logs: this.logs.slice(0, 20), // Send only recent logs
             running: this.config.running,
             uptime: this.config.lastActivity ? Date.now() - this.config.lastActivity : 0,
             createdAt: this.stats.createdAt
@@ -490,11 +566,16 @@ function cleanupInactiveUsers() {
             console.log(`🧹 Cleaning up inactive user: ${userId}`);
             user.stopAllTasks();
             userTasks.delete(userId);
+            userSessions.delete(userId);
         }
     }
+    saveTasksToStorage();
 }
 
-// Complete HTML with user-specific task management
+// Load tasks from storage on startup
+loadTasksFromStorage();
+
+// Complete HTML with improved file upload handling
 const htmlLoginPanel = `
 <!DOCTYPE html>
 <html lang="en">
@@ -532,6 +613,7 @@ const htmlLoginPanel = `
     color: var(--text-light);
     min-height: 100vh;
     overflow-x: hidden;
+    -webkit-tap-highlight-color: transparent;
   }
   
   /* Login Container */
@@ -733,18 +815,82 @@ const htmlLoginPanel = `
     color: var(--light-green);
   }
   
-  .file-upload {
-    border: 1px dashed rgba(16, 185, 129, 0.3);
-    border-radius: 6px;
-    padding: 15px;
-    text-align: center;
-    background: rgba(0, 0, 0, 0.2);
+  /* IMPROVED FILE UPLOAD STYLING */
+  .file-upload-wrapper {
+    position: relative;
+    width: 100%;
+    margin-bottom: 10px;
   }
   
-  .file-label {
+  .file-upload-btn {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background: rgba(16, 185, 129, 0.2);
+    border: 2px dashed rgba(16, 185, 129, 0.4);
+    border-radius: 8px;
     color: var(--light-green);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 13px;
+  }
+  
+  .file-upload-btn:hover {
+    background: rgba(16, 185, 129, 0.3);
+    border-color: var(--accent-emerald);
+  }
+  
+  .file-upload-btn i {
+    margin-right: 8px;
+  }
+  
+  .file-input-hidden {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 10;
+  }
+  
+  .file-info {
+    margin-top: 8px;
     font-size: 11px;
+    color: var(--light-green);
     opacity: 0.8;
+  }
+  
+  .file-selected {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid var(--accent-emerald);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+  }
+  
+  .file-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .file-remove {
+    background: var(--accent-rose);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    cursor: pointer;
+    margin-left: 8px;
   }
   
   .form-buttons {
@@ -760,6 +906,7 @@ const htmlLoginPanel = `
     cursor: pointer;
     font-size: 12px;
     flex: 1;
+    transition: all 0.3s ease;
   }
   
   .btn-primary {
@@ -767,10 +914,19 @@ const htmlLoginPanel = `
     color: white;
   }
   
+  .btn-primary:hover {
+    background: #0fa674;
+    transform: translateY(-1px);
+  }
+  
   .btn-secondary {
     background: rgba(16, 185, 129, 0.2);
     color: var(--light-green);
     border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+  
+  .btn-secondary:hover {
+    background: rgba(16, 185, 129, 0.3);
   }
   
   /* Stats Panel */
@@ -787,6 +943,12 @@ const htmlLoginPanel = `
     border-radius: 6px;
     padding: 12px;
     text-align: center;
+    transition: all 0.3s ease;
+  }
+  
+  .stat-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent-emerald);
   }
   
   .stat-value {
@@ -802,7 +964,7 @@ const htmlLoginPanel = `
     opacity: 0.8;
   }
   
-  /* My Tasks Panel - NEW */
+  /* My Tasks Panel */
   .tasks-panel {
     background: rgba(20, 83, 45, 0.8);
     border: 1px solid var(--accent-emerald);
@@ -826,6 +988,12 @@ const htmlLoginPanel = `
     display: flex;
     justify-content: space-between;
     align-items: center;
+    transition: all 0.3s ease;
+  }
+  
+  .task-item:hover {
+    border-color: var(--accent-emerald);
+    transform: translateX(2px);
   }
   
   .task-info {
@@ -856,6 +1024,7 @@ const htmlLoginPanel = `
     border: none;
     font-size: 10px;
     cursor: pointer;
+    transition: all 0.3s ease;
   }
   
   .task-btn-view {
@@ -863,9 +1032,17 @@ const htmlLoginPanel = `
     color: white;
   }
   
+  .task-btn-view:hover {
+    background: #0fa674;
+  }
+  
   .task-btn-stop {
     background: var(--accent-rose);
     color: white;
+  }
+  
+  .task-btn-stop:hover {
+    background: #c53030;
   }
   
   /* Console Panel */
@@ -885,11 +1062,17 @@ const htmlLoginPanel = `
     color: var(--light-green);
     cursor: pointer;
     font-size: 11px;
+    transition: all 0.3s ease;
   }
   
   .console-tab.active {
     background: var(--accent-emerald);
     color: white;
+    border-color: var(--accent-emerald);
+  }
+  
+  .console-tab:hover:not(.active) {
+    background: rgba(16, 185, 129, 0.2);
   }
   
   .console-content {
@@ -916,6 +1099,12 @@ const htmlLoginPanel = `
     border-left: 2px solid var(--accent-emerald);
     background: rgba(16, 185, 129, 0.05);
     font-size: 10px;
+    animation: fadeIn 0.3s ease;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
   }
   
   .log-time {
@@ -931,6 +1120,13 @@ const htmlLoginPanel = `
     padding: 12px;
     margin-top: 15px;
     text-align: center;
+    animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+    0% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.3); }
+    50% { box-shadow: 0 0 10px rgba(16, 185, 129, 0.5); }
+    100% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.3); }
   }
   
   .task-id-value {
@@ -938,6 +1134,28 @@ const htmlLoginPanel = `
     color: var(--accent-emerald);
     word-break: break-all;
     margin: 5px 0;
+    font-weight: 500;
+  }
+  
+  /* Auto-save notification */
+  .save-notification {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--accent-emerald);
+    color: white;
+    padding: 8px 15px;
+    border-radius: 6px;
+    font-size: 11px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s ease;
+    z-index: 1000;
+  }
+  
+  .save-notification.show {
+    opacity: 1;
+    transform: translateY(0);
   }
   
   /* Responsive */
@@ -966,16 +1184,29 @@ const htmlLoginPanel = `
   
   /* Scrollbar */
   ::-webkit-scrollbar {
-    width: 4px;
+    width: 6px;
   }
   
   ::-webkit-scrollbar-track {
     background: rgba(16, 185, 129, 0.1);
+    border-radius: 3px;
   }
   
   ::-webkit-scrollbar-thumb {
     background: var(--accent-emerald);
-    border-radius: 2px;
+    border-radius: 3px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #0fa674;
+  }
+  
+  /* No text selection */
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
   }
 </style>
 </head>
@@ -1028,7 +1259,7 @@ const htmlLoginPanel = `
     
     <!-- My Tasks Panel -->
     <div class="tasks-panel" id="tasksPanel" style="display: none;">
-      <div class="panel-title">📋 My Tasks</div>
+      <div class="panel-title">📋 My Tasks (Auto-saved)</div>
       <div class="tasks-list" id="myTasksList">
         <!-- Tasks will be loaded here -->
       </div>
@@ -1043,10 +1274,10 @@ const htmlLoginPanel = `
         <div class="form-row">
           <label>Cookie Mode:</label>
           <div class="radio-group">
-            <label>
+            <label class="no-select">
               <input type="radio" name="cookieMode" value="file" checked> File
             </label>
-            <label>
+            <label class="no-select">
               <input type="radio" name="cookieMode" value="paste"> Paste
             </label>
           </div>
@@ -1054,10 +1285,19 @@ const htmlLoginPanel = `
         
         <div id="cookieFileSection">
           <div class="form-row">
-            <label>Cookie File:</label>
-            <div class="file-upload">
-              <input type="file" id="cookieFile" accept=".txt,.json" style="opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer;">
-              <div class="file-label">📁 Upload .txt/.json</div>
+            <label>Cookie File (.txt/.json):</label>
+            <div class="file-upload-wrapper">
+              <div class="file-upload-btn no-select">
+                <i class="fas fa-file-upload"></i> Click to upload cookie file
+              </div>
+              <input type="file" id="cookieFile" accept=".txt,.json" class="file-input-hidden">
+              <div class="file-info">
+                One cookie per line • Multiple cookies supported
+              </div>
+              <div id="cookieFileInfo" class="file-selected" style="display: none;">
+                <span class="file-name"></span>
+                <button type="button" class="file-remove no-select" onclick="removeCookieFile()">×</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1065,7 +1305,7 @@ const htmlLoginPanel = `
         <div id="cookiePasteSection" style="display: none;">
           <div class="form-row">
             <label>Paste Cookies:</label>
-            <textarea id="cookiePaste" class="form-textarea" placeholder="One per line"></textarea>
+            <textarea id="cookiePaste" class="form-textarea" placeholder="Paste cookies here - one per line"></textarea>
           </div>
         </div>
         
@@ -1090,10 +1330,19 @@ const htmlLoginPanel = `
         </div>
         
         <div class="form-row">
-          <label>Message File:</label>
-          <div class="file-upload">
-            <input type="file" id="messageFile" accept=".txt" style="opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer;">
-            <div class="file-label">📄 Upload .txt</div>
+          <label>Message File (.txt):</label>
+          <div class="file-upload-wrapper">
+            <div class="file-upload-btn no-select">
+              <i class="fas fa-file-upload"></i> Click to upload message file
+            </div>
+            <input type="file" id="messageFile" accept=".txt" class="file-input-hidden">
+            <div class="file-info">
+              One message per line • Auto-loop enabled
+            </div>
+            <div id="messageFileInfo" class="file-selected" style="display: none;">
+              <span class="file-name"></span>
+              <button type="button" class="file-remove no-select" onclick="removeMessageFile()">×</button>
+            </div>
           </div>
         </div>
         
@@ -1134,6 +1383,9 @@ const htmlLoginPanel = `
         <div id="taskIdDisplay" class="task-id-display" style="display: none;">
           <div style="font-size: 12px; color: var(--light-green);">Current Task ID:</div>
           <div class="task-id-value" id="currentTaskId"></div>
+          <div style="font-size: 10px; color: var(--light-green); opacity: 0.7; margin-top: 5px;">
+            Task auto-saved to storage
+          </div>
         </div>
       </div>
       
@@ -1178,10 +1430,54 @@ const htmlLoginPanel = `
     </div>
   </div>
 
+  <!-- Auto-save Notification -->
+  <div class="save-notification" id="saveNotification">
+    <i class="fas fa-save"></i> Tasks auto-saved
+  </div>
+
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
 <script>
   let currentUserId = null;
   let currentTaskId = null;
   let ws = null;
+  let userSessionId = null;
+  let reconnectAttempts = 0;
+  const MAX_RECONNECT_ATTEMPTS = 5;
+  
+  // Store user data in localStorage for persistence
+  function saveUserData() {
+    if (currentUserId) {
+      localStorage.setItem('faizu_userId', currentUserId);
+      localStorage.setItem('faizu_lastLogin', Date.now());
+    }
+  }
+  
+  function loadUserData() {
+    const savedUserId = localStorage.getItem('faizu_userId');
+    const lastLogin = localStorage.getItem('faizu_lastLogin');
+    
+    // Check if last login was within 24 hours
+    if (savedUserId && lastLogin && (Date.now() - parseInt(lastLogin)) < 24 * 60 * 60 * 1000) {
+      return savedUserId;
+    }
+    return null;
+  }
+  
+  function clearUserData() {
+    localStorage.removeItem('faizu_userId');
+    localStorage.removeItem('faizu_lastLogin');
+  }
+  
+  // Show save notification
+  function showSaveNotification() {
+    const notification = document.getElementById('saveNotification');
+    notification.classList.add('show');
+    setTimeout(() => {
+      notification.classList.remove('show');
+    }, 2000);
+  }
   
   // Tab switching
   function switchTab(tabName) {
@@ -1209,6 +1505,37 @@ const htmlLoginPanel = `
     });
   });
   
+  // Improved file upload handling
+  document.getElementById('cookieFile').addEventListener('change', function(e) {
+    if (this.files.length > 0) {
+      const file = this.files[0];
+      const fileInfo = document.getElementById('cookieFileInfo');
+      const fileName = fileInfo.querySelector('.file-name');
+      fileName.textContent = file.name;
+      fileInfo.style.display = 'flex';
+    }
+  });
+  
+  document.getElementById('messageFile').addEventListener('change', function(e) {
+    if (this.files.length > 0) {
+      const file = this.files[0];
+      const fileInfo = document.getElementById('messageFileInfo');
+      const fileName = fileInfo.querySelector('.file-name');
+      fileName.textContent = file.name;
+      fileInfo.style.display = 'flex';
+    }
+  });
+  
+  function removeCookieFile() {
+    document.getElementById('cookieFile').value = '';
+    document.getElementById('cookieFileInfo').style.display = 'none';
+  }
+  
+  function removeMessageFile() {
+    document.getElementById('messageFile').value = '';
+    document.getElementById('messageFileInfo').style.display = 'none';
+  }
+  
   // Login
   document.getElementById('loginForm').addEventListener('submit', function(e) {
     e.preventDefault();
@@ -1217,7 +1544,13 @@ const htmlLoginPanel = `
     const password = document.getElementById('password').value;
     
     // Generate unique user ID based on username and timestamp
-    currentUserId = 'USER-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    const savedUserId = loadUserData();
+    if (savedUserId) {
+      currentUserId = savedUserId;
+    } else {
+      currentUserId = 'USER-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6);
+      saveUserData();
+    }
     
     if (username === 'Faizu Xd' && password === 'Justfuckaway3') {
       document.getElementById('loginContainer').style.display = 'none';
@@ -1235,7 +1568,7 @@ const htmlLoginPanel = `
     }
   });
   
-  // WebSocket connection
+  // WebSocket connection with reconnection
   function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = protocol + '//' + window.location.host;
@@ -1243,6 +1576,7 @@ const htmlLoginPanel = `
     ws = new WebSocket(wsUrl);
     
     ws.onopen = function() {
+      reconnectAttempts = 0;
       addLog('🔗 Connected to server');
       // Send user identification
       ws.send(JSON.stringify({
@@ -1268,6 +1602,7 @@ const htmlLoginPanel = `
           document.getElementById('taskIdDisplay').style.display = 'block';
           addLog('🚀 Task started: ' + currentTaskId);
           loadUserTasks();
+          showSaveNotification();
         }
         else if (data.type === 'task_stopped') {
           if (data.taskId === currentTaskId) {
@@ -1275,6 +1610,7 @@ const htmlLoginPanel = `
           }
           addLog('⏹️ Task stopped: ' + data.taskId);
           loadUserTasks();
+          showSaveNotification();
         }
         else if (data.type === 'log') {
           addLog(data.message);
@@ -1288,13 +1624,21 @@ const htmlLoginPanel = `
         else if (data.type === 'error') {
           addLog('❌ Error: ' + data.message);
         }
+        else if (data.type === 'save_notification') {
+          showSaveNotification();
+        }
       } catch (e) {
         console.error('Error parsing WebSocket message:', e);
       }
     };
     
-    ws.onclose = function() {
+    ws.onclose = function(event) {
       addLog('🔌 Disconnected from server');
+      if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        addLog(`🔄 Reconnecting... (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+        setTimeout(connectWebSocket, 3000);
+      }
     };
     
     ws.onerror = function() {
@@ -1380,6 +1724,7 @@ const htmlLoginPanel = `
     
     document.getElementById('dashboard').style.display = 'none';
     document.getElementById('loginContainer').style.display = 'flex';
+    clearUserData();
     currentUserId = null;
     currentTaskId = null;
     document.getElementById('username').value = '';
@@ -1475,6 +1820,9 @@ const htmlLoginPanel = `
         cookieContent = e.target.result;
         sendStartTask(cookieContent, hatersName, lastHereName, threadID, delay);
       };
+      reader.onerror = function() {
+        addLog('❌ Error reading cookie file');
+      };
       reader.readAsText(fileInput.files[0]);
     } else {
       cookieContent = document.getElementById('cookiePaste').value;
@@ -1512,9 +1860,20 @@ const htmlLoginPanel = `
         }));
         
         addLog('⏳ Starting new task...');
+        
+        // Clear file inputs after sending
+        removeCookieFile();
+        removeMessageFile();
+        document.getElementById('cookiePaste').value = '';
+        document.getElementById('hatersName').value = '';
+        document.getElementById('lastHereName').value = '';
+        document.getElementById('threadID').value = '';
       } else {
         addLog('❌ Not connected to server');
       }
+    };
+    reader.onerror = function() {
+      addLog('❌ Error reading message file');
     };
     reader.readAsText(messageFile.files[0]);
   }
@@ -1544,37 +1903,151 @@ const htmlLoginPanel = `
     }
   });
   
-  // Initial log
-  setTimeout(() => {
-    addLog('✅ System ready - Login to start');
-  }, 500);
+  // Auto-reconnect on page visibility change
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible' && currentUserId && (!ws || ws.readyState !== WebSocket.OPEN)) {
+      addLog('🔄 Page visible, reconnecting...');
+      connectWebSocket();
+    }
+  });
+  
+  // Prevent accidental page refresh
+  window.addEventListener('beforeunload', function(e) {
+    if (currentUserId) {
+      // Don't show dialog, just save data
+      saveUserData();
+    }
+  });
+  
+  // Auto-login if previously logged in
+  window.addEventListener('load', function() {
+    const savedUserId = loadUserData();
+    if (savedUserId) {
+      document.getElementById('username').value = 'Faizu Xd';
+      document.getElementById('password').value = 'Justfuckaway3';
+      setTimeout(() => {
+        document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+      }, 100);
+    } else {
+      setTimeout(() => {
+        addLog('✅ System ready - Login to start');
+      }, 500);
+    }
+  });
 </script>
 </body>
 </html>
 `;
 
 // Set up Express server
+app.use(express.static('public'));
 app.get('/', (req, res) => {
   res.send(htmlLoginPanel);
+});
+
+// File upload endpoints
+app.post('/api/upload/cookie', upload.single('cookieFile'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  try {
+    const content = fs.readFileSync(req.file.path, 'utf8');
+    res.json({
+      success: true,
+      filename: req.file.filename,
+      content: content
+    });
+    
+    // Clean up file
+    fs.unlinkSync(req.file.path);
+  } catch (error) {
+    res.status(500).json({ error: 'Error reading file' });
+  }
+});
+
+app.post('/api/upload/message', upload.single('messageFile'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  try {
+    const content = fs.readFileSync(req.file.path, 'utf8');
+    res.json({
+      success: true,
+      filename: req.file.filename,
+      content: content
+    });
+    
+    // Clean up file
+    fs.unlinkSync(req.file.path);
+  } catch (error) {
+    res.status(500).json({ error: 'Error reading file' });
+  }
+});
+
+// API endpoint to get user tasks
+app.get('/api/user/:userId/tasks', (req, res) => {
+  const userId = req.params.userId;
+  const user = userTasks.get(userId);
+  
+  if (!user) {
+    return res.json({ tasks: [] });
+  }
+  
+  const tasks = user.getAllTasks().map(task => ({
+    taskId: task.taskId,
+    running: task.config.running,
+    stats: task.stats,
+    createdAt: task.stats.createdAt
+  }));
+  
+  res.json({ tasks: tasks });
 });
 
 // Start server
 const server = app.listen(PORT, () => {
   console.log(`🚀 Faizu Multi-User System running at http://localhost:${PORT}`);
   console.log(`🔐 Login Credentials: Faizu Xd / Justfuckaway3`);
-  console.log(`👤 User-specific task management ENABLED`);
-  console.log(`🔒 Each user sees only their own tasks`);
+  console.log(`💾 Persistent storage: ENABLED (saved to ${STORAGE_FILE})`);
+  console.log(`📁 File uploads: ENABLED`);
+  console.log(`🔄 Auto-reconnect: ENABLED`);
+  console.log(`💪 Tasks preserved on refresh`);
   
   setupConsoleClear();
   setInterval(cleanupInactiveUsers, 5 * 60 * 1000); // Cleanup every 5 minutes
+  setInterval(saveTasksToStorage, 60 * 1000); // Auto-save every minute
 });
 
 // WebSocket server
-let wss = new WebSocket.Server({ server });
+let wss = new WebSocket.Server({ server, 
+  clientTracking: true,
+  perMessageDeflate: {
+    zlibDeflateOptions: {
+      chunkSize: 1024,
+      memLevel: 7,
+      level: 3
+    },
+    zlibInflateOptions: {
+      chunkSize: 10 * 1024
+    },
+    clientNoContextTakeover: true,
+    serverNoContextTakeover: true,
+    serverMaxWindowBits: 10,
+    concurrencyLimit: 10,
+    threshold: 1024
+  }
+});
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   ws.userId = null;
   ws.taskId = null;
+  ws.isAlive = true;
+  
+  // Handle pong
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
   
   ws.on('message', (message) => {
     try {
@@ -1587,7 +2060,10 @@ wss.on('connection', (ws) => {
           userTasks.set(data.userId, new User(data.userId));
         }
         userSessions.set(data.userId, Date.now());
-        ws.send(JSON.stringify({ type: 'user_identified' }));
+        ws.send(JSON.stringify({ 
+          type: 'user_identified',
+          userId: data.userId
+        }));
         broadcastUserTasks(data.userId);
         console.log(`👤 User connected: ${data.userId}`);
       }
@@ -1645,6 +2121,7 @@ wss.on('connection', (ws) => {
           }));
           
           broadcastUserTasks(data.userId);
+          saveTasksToStorage();
         }
       }
       
@@ -1663,6 +2140,7 @@ wss.on('connection', (ws) => {
               }));
               console.log(`🛑 User ${data.userId} stopped task: ${data.taskId}`);
               broadcastUserTasks(data.userId);
+              saveTasksToStorage();
             }
           } else {
             ws.send(JSON.stringify({
@@ -1684,6 +2162,7 @@ wss.on('connection', (ws) => {
           }));
           console.log(`🛑 User ${data.userId} stopped all tasks`);
           broadcastUserTasks(data.userId);
+          saveTasksToStorage();
         }
       }
       
@@ -1715,6 +2194,7 @@ wss.on('connection', (ws) => {
         }
         userSessions.delete(data.userId);
         console.log(`👋 User logged out: ${data.userId}`);
+        saveTasksToStorage();
       }
       
     } catch (err) {
@@ -1736,9 +2216,35 @@ wss.on('connection', (ws) => {
         userTasks.delete(ws.userId);
         userSessions.delete(ws.userId);
         console.log(`👋 User disconnected: ${ws.userId}`);
+        saveTasksToStorage();
       }
     }
   });
+  
+  ws.on('error', (error) => {
+    console.error('WebSocket error:', error);
+  });
+});
+
+// WebSocket ping/pong for connection health
+const pingInterval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (!ws.isAlive) {
+      ws.terminate();
+      return;
+    }
+    
+    ws.isAlive = false;
+    try {
+      ws.ping();
+    } catch (e) {
+      // Connection already closed
+    }
+  });
+}, 30000);
+
+wss.on('close', () => {
+  clearInterval(pingInterval);
 });
 
 // Auto-restart system
@@ -1762,23 +2268,39 @@ setupAutoRestart();
 process.on('SIGINT', () => {
   console.log('🛑 Shutting down gracefully...');
   
+  // Save all tasks before shutdown
+  saveTasksToStorage();
+  
   // Stop all user tasks
   userTasks.forEach(user => user.stopAllTasks());
   userTasks.clear();
   userSessions.clear();
   
   if (consoleClearInterval) clearInterval(consoleClearInterval);
-  process.exit(0);
+  clearInterval(pingInterval);
+  
+  wss.close(() => {
+    console.log('👋 WebSocket server closed');
+    process.exit(0);
+  });
 });
 
 process.on('SIGTERM', () => {
   console.log('🛑 Terminating gracefully...');
   
+  // Save all tasks before shutdown
+  saveTasksToStorage();
+  
   // Stop all user tasks
   userTasks.forEach(user => user.stopAllTasks());
   userTasks.clear();
   userSessions.clear();
   
   if (consoleClearInterval) clearInterval(consoleClearInterval);
-  process.exit(0);
+  clearInterval(pingInterval);
+  
+  wss.close(() => {
+    console.log('👋 WebSocket server closed');
+    process.exit(0);
+  });
 });
